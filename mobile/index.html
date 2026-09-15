@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d0e15">
+  <title>LetrasBR Mobile Overlay</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Canvas Oculto e Tag de Vídeo para Picture-in-Picture (PiP) -->
+  <canvas id="pip-canvas" width="640" height="240" style="display: none;"></canvas>
+  <video id="pip-video" autoplay muted playsinline style="display: none;"></video>
+
+  <div id="app">
+    <!-- Barra Superior -->
+    <header class="top-bar">
+      <div class="brand">
+        <span class="icon">⠿</span>
+        <span class="title">LetrasBR Mobile</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-pip" class="btn-icon" title="Ativar Janela Flutuante (PiP)">📺 PiP</button>
+        <button id="btn-settings" class="btn-icon" title="Configurações">⚙️</button>
+      </div>
+    </header>
+
+    <!-- Info da Música Atual -->
+    <section class="song-info">
+      <div class="status-indicator">
+        <span id="status-dot" class="dot disconnected"></span>
+        <span id="status-text">Aguardando conexão com a API...</span>
+      </div>
+      <h2 id="song-title">Nenhuma música tocando</h2>
+      <p id="song-artist">—</p>
+    </section>
+
+    <!-- Área de Exibição das Letras (Card Flutuante / Arrastável) -->
+    <main class="lyrics-container" id="lyrics-card">
+      <div class="lyrics-box">
+        <p id="lyric-orig" class="lyric-original">Aguardando início da música...</p>
+        <p id="lyric-trans" class="lyric-translation"></p>
+      </div>
+    </main>
+
+    <!-- Miniplayer Flutuante no Rodapé -->
+    <footer class="player-bar">
+      <div class="player-controls">
+        <button id="btn-play" class="btn-player" title="Pausar / Reproduzir">⏸</button>
+        <button id="btn-skip" class="btn-player" title="Pular Música">⏭</button>
+      </div>
+      <div class="time-display" id="time-display">00:00 / 00:00</div>
+      <div class="lang-tag" id="current-lang-badge">PT</div>
+    </footer>
+
+    <!-- Modal de Configurações -->
+    <div id="settings-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>⚙️ Configurações</h3>
+          <button id="btn-close-modal" class="btn-close">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- 1. Idioma -->
+          <div class="setting-group">
+            <label>Idioma da Tradução:</label>
+            <div class="btn-group" id="lang-group">
+              <button data-lang="pt" class="active">🇧🇷 PT</button>
+              <button data-lang="en">🇺🇸 EN</button>
+              <button data-lang="es">🇪🇸 ES</button>
+              <button data-lang="fr">🇫🇷 FR</button>
+            </div>
+          </div>
+
+          <!-- 2. Modo de Exibição -->
+          <div class="setting-group">
+            <label>Modo de Exibição:</label>
+            <div class="btn-group" id="mode-group">
+              <button data-mode="both" class="active">Ambos</button>
+              <button data-mode="trans">Tradução</button>
+              <button data-mode="orig">Original</button>
+            </div>
+          </div>
+
+          <!-- 3. Tamanho da Fonte -->
+          <div class="setting-group">
+            <div class="setting-row">
+              <label>Tamanho da Fonte:</label>
+              <span id="font-val">18px</span>
+            </div>
+            <input type="range" id="slider-font" min="14" max="32" value="18">
+          </div>
+
+          <!-- 4. Opacidade -->
+          <div class="setting-group">
+            <div class="setting-row">
+              <label>Opacidade do Card:</label>
+              <span id="opacity-val">90%</span>
+            </div>
+            <input type="range" id="slider-opacity" min="30" max="100" value="90">
+          </div>
+
+          <!-- 5. URL da API -->
+          <div class="setting-group">
+            <label>Endereço da API (Servidor):</label>
+            <input type="text" id="api-url-input" placeholder="http://192.168.1.X:8000">
+            <small class="tip">Deixe vazio para conectar automaticamente no mesmo endereço.</small>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="btn-save-settings" class="btn-confirm">Salvar e Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

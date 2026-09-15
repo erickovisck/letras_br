@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Music - Tradutor LetrasBR",
+  "version": "1.1.0",
+  "description": "Envia o tempo de reprodução e dados da música em tempo real para a API local do Tradutor LetrasBR.",
+  "permissions": [],
+  "host_permissions": [
+    "*://music.youtube.com/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

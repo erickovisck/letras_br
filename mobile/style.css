@@ -1,0 +1,346 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #0d0e15;
+  color: #f1f5f9;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Header */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background-color: rgba(26, 26, 36, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  font-size: 15px;
+  color: #38bdf8;
+}
+
+.brand .icon {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-icon {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-icon:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Informações da Música */
+.song-info {
+  padding: 16px 20px 8px 20px;
+  text-align: center;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.connected {
+  background-color: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.dot.disconnected {
+  background-color: #ef4444;
+}
+
+#song-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+#song-artist {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* Área de Letras */
+.lyrics-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  touch-action: none;
+}
+
+.lyrics-box {
+  width: 100%;
+  max-width: 500px;
+  background: rgba(24, 24, 34, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 28px 22px;
+  text-align: center;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.2s ease;
+}
+
+.lyric-original {
+  font-size: 18px;
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+}
+
+.lyric-translation {
+  font-size: 21px;
+  font-weight: 700;
+  color: #38bdf8;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+}
+
+/* Miniplayer Bar */
+.player-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background-color: rgba(22, 22, 30, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-player {
+  background-color: #27273a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn-player:active {
+  background-color: #38bdf8;
+  color: #0f172a;
+  transform: scale(0.95);
+}
+
+.time-display {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.lang-tag {
+  background-color: #0284c7;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 9999;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 380px;
+  background-color: #181824;
+  border-radius: 20px;
+  border: 1px solid #2d3748;
+  padding: 22px;
+  color: #f1f5f9;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal-header h3 {
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.setting-group {
+  margin-bottom: 16px;
+}
+
+.setting-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.setting-row span {
+  font-size: 12px;
+  font-weight: bold;
+  color: #38bdf8;
+}
+
+.btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-group button {
+  flex: 1;
+  padding: 8px 4px;
+  background-color: #27273a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-group button.active {
+  background-color: #0284c7;
+  color: #ffffff;
+  border-color: #38bdf8;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #38bdf8;
+  margin-top: 4px;
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #0d0e15;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.tip {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.modal-footer {
+  margin-top: 20px;
+}
+
+.btn-confirm {
+  width: 100%;
+  padding: 10px;
+  background-color: #38bdf8;
+  color: #0f172a;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}

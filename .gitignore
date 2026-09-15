@@ -1,0 +1,23 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary and log files
+*.log
+scratch/
+
+# IDE files
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Reference folders
+Music-LAW-Lyrics-AnyWhere-main/
+YouTubeMusic-Beautifier-main/
