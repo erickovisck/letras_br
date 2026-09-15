@@ -30,10 +30,10 @@ if os.path.exists(os.path.join(inner_ytm, "ytmusicapi", "__init__.py")):
 
 from scraper import get_translation, clean_song_title
 from aligner import align_lyrics, find_active_aligned_line, AlignedLine
-from lyrics_sync import YTMManager
 from config import get_config, save_config
+from providers import ProviderFactory, TrackInfo, TimedLine
 
-app = FastAPI(title="YouTube Music - LetrasBR Tradutor API", version="2.0.0")
+app = FastAPI(title="LetrasBR Tradutor API (Universal)", version="2.1.0")
 
 # Permitir requisições de qualquer origem (extensões, páginas locais, etc.)
 app.add_middleware(
@@ -48,24 +48,25 @@ mobile_dir = os.path.join(root_dir, "mobile")
 if os.path.exists(mobile_dir):
     app.mount("/mobile", StaticFiles(directory=mobile_dir, html=True), name="mobile")
 
+
 @app.get("/")
 def root_index():
     if os.path.exists(mobile_dir):
         return RedirectResponse(url="/mobile")
     return {"service": "LetrasBR API", "status": "running"}
 
-ytm_manager = YTMManager()
-
 
 class SyncPayload(BaseModel):
     title: str
     artist: str
     album: Optional[str] = None
-    videoId: Optional[str] = None
+    trackId: Optional[str] = None
+    videoId: Optional[str] = None  # Mantido para 100% de retrocompatibilidade com extensões existentes
     currentTime: float  # em segundos
     duration: Optional[float] = None
     isPaused: Optional[bool] = False
     lang: Optional[str] = None  # 'pt', 'fr', 'en', 'es'
+    source: Optional[str] = "ytmusic"  # 'ytmusic' ou 'spotify'
 
 
 class LanguagePayload(BaseModel):
@@ -73,7 +74,8 @@ class LanguagePayload(BaseModel):
 
 
 class PlayerActionPayload(BaseModel):
-    action: str  # 'play_pause', 'next'
+    action: str  # 'play_pause', 'next', 'previous', 'toggle_play'
+    source: Optional[str] = None  # Se omitido, usa o provedor ativo
 
 
 class PlaybackState:
@@ -81,9 +83,12 @@ class PlaybackState:
         self.song_key: Optional[str] = None
         self.title: str = ""
         self.artist: str = ""
-        self.video_id: Optional[str] = None
+        self.album: Optional[str] = None
+        self.track_id: Optional[str] = None
+        self.video_id: Optional[str] = None  # Alias para compatibilidade retroativa
+        self.source: str = "ytmusic"
         self.lang: str = get_config().get("lang", "pt")  # Idioma padrão vindo da configuração
-        self.timed_lyrics: List[Any] = []
+        self.timed_lyrics: List[TimedLine] = []
         self.ordered_verses: List[Dict[str, Any]] = []
         self.aligned_lyrics: List[AlignedLine] = []
         self.translation_dict: Dict[str, str] = {}
@@ -96,16 +101,17 @@ class PlaybackState:
         self.is_paused: bool = False
         self.current_seconds: float = 0.0
         self.duration_seconds: float = 0.0
-        self.pending_command: Optional[str] = None
 
 
 state = PlaybackState()
 
 
-def queue_command(action: str):
-    """Enfileira um comando para ser executado pelo YouTube Music."""
-    state.pending_command = action
-    safe_print(f"[{now_str()}] 🎮 Comando enviado para o player: {action.upper()}")
+def queue_command(action: str, source: Optional[str] = None):
+    """Enfileira um comando para ser executado pelo player ativo através do seu Adapter."""
+    target_source = source or state.source or "ytmusic"
+    provider = ProviderFactory.get_provider(target_source)
+    provider.queue_command(action)
+    safe_print(f"[{now_str()}] 🎮 Comando enviado para o player [{provider.provider_id.upper()}]: {action.upper()}")
 
 
 def now_str() -> str:
@@ -127,35 +133,56 @@ def safe_print(*args, **kwargs):
         print(*cleaned_args, **kwargs)
 
 
-def update_current_track(title: str, artist: str, video_id: Optional[str], lang: Optional[str] = None):
+def update_current_track(
+    title: str,
+    artist: str,
+    track_id: Optional[str],
+    lang: Optional[str] = None,
+    source: str = "ytmusic",
+    album: Optional[str] = None,
+    duration: Optional[float] = None
+):
     if lang:
         state.lang = lang.lower().strip()
 
     state.title = title
     state.artist = artist
-    state.video_id = video_id
+    state.album = album
+    state.track_id = track_id
+    state.video_id = track_id  # Mantém compatibilidade com clientes que consultam videoId
+    state.source = source
     state.last_line_key = None
     state.aligned_lyrics = []
 
-    song_id = f"{artist.strip()}|||{title.strip()}"
-    if video_id:
-        song_id += f"|||{video_id.strip()}"
+    provider = ProviderFactory.get_provider(source)
+
+    song_id = f"{provider.provider_id}|||{artist.strip()}|||{title.strip()}"
+    if track_id:
+        song_id += f"|||{track_id.strip()}"
     state.song_key = f"{song_id}|||{state.lang.strip()}"
 
     safe_print("\n" + "=" * 70)
-    safe_print(f"[{now_str()}] 🎵 NOVA FAIXA DETECTADA: {artist} - {title}")
-    if video_id:
-        safe_print(f"[{now_str()}] 🔗 Video ID: {video_id}")
+    safe_print(f"[{now_str()}] 🎵 NOVA FAIXA DETECTADA [{provider.provider_id.upper()}]: {artist} - {title}")
+    if track_id:
+        safe_print(f"[{now_str()}] 🔗 Track ID: {track_id}")
     safe_print(f"[{now_str()}] 🌐 Idioma selecionado: {state.lang.upper()}")
     safe_print("=" * 70)
 
-    # 1. Busca letras sincronizadas no YouTube Music
-    safe_print(f"[{now_str()}] [1/3] 🔍 Buscando letras sincronizadas no YouTube Music (ytmusicapi)...")
-    state.timed_lyrics = ytm_manager.get_timed_lyrics(video_id=video_id or "", title=title, artist=artist) or []
+    # 1. Busca letras sincronizadas através do Provider Adapter
+    safe_print(f"[{now_str()}] [1/3] 🔍 Buscando letras sincronizadas no provedor '{provider.provider_id.upper()}'...")
+    track_info = TrackInfo(
+        title=title,
+        artist=artist,
+        album=album,
+        track_id=track_id,
+        duration=duration,
+        source=provider.provider_id
+    )
+    state.timed_lyrics = provider.get_timed_lyrics(track_info) or []
     if state.timed_lyrics:
-        safe_print(f"[{now_str()}] ✅ [YTM] {len(state.timed_lyrics)} versos com timestamps carregados!")
+        safe_print(f"[{now_str()}] ✅ [{provider.provider_id.upper()}] {len(state.timed_lyrics)} versos com timestamps carregados!")
     else:
-        safe_print(f"[{now_str()}] ⚠️ [YTM] Nenhuma letra sincronizada encontrada para esta faixa.")
+        safe_print(f"[{now_str()}] ⚠️ [{provider.provider_id.upper()}] Nenhuma letra sincronizada encontrada para esta faixa.")
 
     # 2. Busca tradução no Letras.mus.br no idioma configurado
     safe_print(f"[{now_str()}] [2/3] 🌐 Buscando tradução ({state.lang.upper()}) verso a verso no Letras.mus.br...")
@@ -182,9 +209,13 @@ def update_current_track(title: str, artist: str, video_id: Optional[str], lang:
 
 @app.post("/api/sync")
 def sync_playback(payload: SyncPayload, request: Request):
-    song_id = f"{payload.artist.strip()}|||{payload.title.strip()}"
-    if payload.videoId:
-        song_id += f"|||{payload.videoId.strip()}"
+    effective_track_id = payload.trackId or payload.videoId
+    effective_source = payload.source or "ytmusic"
+    provider = ProviderFactory.get_provider(effective_source)
+
+    song_id = f"{provider.provider_id}|||{payload.artist.strip()}|||{payload.title.strip()}"
+    if effective_track_id:
+        song_id += f"|||{effective_track_id.strip()}"
 
     active_lang = state.lang
     new_key = f"{song_id}|||{active_lang}"
@@ -192,7 +223,15 @@ def sync_playback(payload: SyncPayload, request: Request):
 
     # Mudança de faixa
     if is_new_song:
-        update_current_track(payload.title, payload.artist, payload.videoId, lang=active_lang)
+        update_current_track(
+            title=payload.title,
+            artist=payload.artist,
+            track_id=effective_track_id,
+            lang=active_lang,
+            source=effective_source,
+            album=payload.album,
+            duration=payload.duration
+        )
 
     # Atualiza o timestamp atual e estado do player
     current_ms = int(payload.currentTime * 1000)
@@ -202,13 +241,18 @@ def sync_playback(payload: SyncPayload, request: Request):
     if payload.duration:
         state.duration_seconds = payload.duration
 
-    # Consome comando pendente se houver (para ser executado pelo YouTube Music)
-    pending_cmd = state.pending_command
-    state.pending_command = None
+    # Consome comando pendente do adapter se houver (para ser executado pelo player)
+    pending_cmd = provider.pop_pending_command()
 
     # Se pausado, não busca nova linha mas ainda entrega comandos se houver
     if payload.isPaused:
-        res = {"status": "paused", "title": state.title, "artist": state.artist, "lang": state.lang}
+        res = {
+            "status": "paused",
+            "title": state.title,
+            "artist": state.artist,
+            "lang": state.lang,
+            "source": provider.provider_id
+        }
         if pending_cmd:
             res["command"] = pending_cmd
         return res
@@ -231,6 +275,7 @@ def sync_playback(payload: SyncPayload, request: Request):
         "title": state.title,
         "artist": state.artist,
         "lang": state.lang,
+        "source": provider.provider_id,
         "currentTime": payload.currentTime,
         "activeOriginal": state.active_original,
         "activeTranslation": state.active_translation,
@@ -252,15 +297,25 @@ def change_language_internal(new_lang: str):
     safe_print(f"\n[{now_str()}] 🔄 Alterando idioma de '{old_lang.upper()}' para '{new_lang.upper()}'...")
 
     if state.title and state.artist:
-        song_id = f"{state.artist.strip()}|||{state.title.strip()}"
-        if state.video_id:
-            song_id += f"|||{state.video_id.strip()}"
+        provider = ProviderFactory.get_provider(state.source)
+        song_id = f"{provider.provider_id}|||{state.artist.strip()}|||{state.title.strip()}"
+        effective_id = state.track_id or state.video_id
+        if effective_id:
+            song_id += f"|||{effective_id.strip()}"
         state.song_key = f"{song_id}|||{new_lang}"
 
-        # 1. Se ainda não temos letras com timestamps do YTM, busca
+        # 1. Se ainda não temos letras com timestamps, busca pelo adapter do provedor
         if not state.timed_lyrics:
-            safe_print(f"[{now_str()}] [1/2] 🔍 Buscando letras sincronizadas no YouTube Music (ytmusicapi)...")
-            state.timed_lyrics = ytm_manager.get_timed_lyrics(video_id=state.video_id or "", title=state.title, artist=state.artist) or []
+            safe_print(f"[{now_str()}] [1/2] 🔍 Buscando letras sincronizadas no provedor '{provider.provider_id.upper()}'...")
+            track_info = TrackInfo(
+                title=state.title,
+                artist=state.artist,
+                album=state.album,
+                track_id=effective_id,
+                duration=state.duration_seconds,
+                source=provider.provider_id
+            )
+            state.timed_lyrics = provider.get_timed_lyrics(track_info) or []
 
         # 2. Busca tradução no novo idioma
         safe_print(f"[{now_str()}] [1/2] 🌐 Buscando tradução ({new_lang.upper()}) verso a verso no Letras.mus.br...")
@@ -327,12 +382,12 @@ def api_set_config(cfg: Dict[str, Any]):
 
 @app.post("/api/player/action")
 def api_player_action(payload: PlayerActionPayload):
-    """Envia um comando para o YouTube Music (play_pause, next)."""
+    """Envia um comando para o player ativo (play_pause, next, toggle_play)."""
     action = payload.action.lower().strip()
-    if action not in ["play_pause", "next", "toggle_play"]:
-        return {"status": "error", "message": f"Ação '{action}' desconhecida. Use 'play_pause' ou 'next'."}
-    queue_command(action)
-    return {"status": "ok", "action": action}
+    if action not in ["play_pause", "next", "previous", "toggle_play"]:
+        return {"status": "error", "message": f"Ação '{action}' desconhecida. Use 'play_pause', 'next' ou 'previous'."}
+    queue_command(action, source=payload.source)
+    return {"status": "ok", "action": action, "source": payload.source or state.source}
 
 
 @app.get("/api/current")
@@ -340,7 +395,10 @@ def get_current():
     return {
         "title": state.title,
         "artist": state.artist,
+        "album": state.album,
         "videoId": state.video_id,
+        "trackId": state.track_id,
+        "source": state.source,
         "lang": state.lang,
         "currentTimeMs": state.current_time_ms,
         "currentSeconds": state.current_seconds,
@@ -358,7 +416,13 @@ def get_current():
 @app.get("/api/health")
 def health():
     safe_print(f"[{now_str()}] [HEALTH] Verificação de saúde recebida (API OK).")
-    return {"status": "running", "service": "letrasbr_api", "lang": state.lang, "time": now_str()}
+    return {
+        "status": "running",
+        "service": "letrasbr_api",
+        "source": state.source,
+        "lang": state.lang,
+        "time": now_str()
+    }
 
 
 if __name__ == "__main__":
