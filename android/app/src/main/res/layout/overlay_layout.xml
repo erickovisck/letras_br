@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/overlay_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_overlay"
+    android:padding="12dp"
+    android:elevation="12dp">
+
+    <!-- Barra de Controle Superior (Grip, Miniplayer, Fechar) -->
+    <LinearLayout
+        android:id="@+id/overlay_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/overlay_grip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⠿"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:paddingEnd="6dp" />
+
+        <!-- Miniplayer: Play/Pause -->
+        <TextView
+            android:id="@+id/overlay_btn_play"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⏸"
+            android:textColor="@color/accent_blue"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="6dp" />
+
+        <!-- Miniplayer: Pular -->
+        <TextView
+            android:id="@+id/overlay_btn_next"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⏭"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingStart="4dp"
+            android:paddingEnd="8dp" />
+
+        <!-- Título da Música -->
+        <TextView
+            android:id="@+id/overlay_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Aguardando música..."
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+        <!-- Botão Fechar -->
+        <TextView
+            android:id="@+id/overlay_btn_close"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:paddingStart="8dp" />
+    </LinearLayout>
+
+    <!-- Verso Original -->
+    <TextView
+        android:id="@+id/overlay_text_original"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Abra o YouTube Music para sincronizar"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp"
+        android:gravity="center"
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp" />
+
+    <!-- Verso Traduzido -->
+    <TextView
+        android:id="@+id/overlay_text_translation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="@color/accent_blue"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingTop="2dp"
+        android:paddingBottom="4dp" />
+
+</LinearLayout>
