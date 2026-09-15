@@ -137,6 +137,11 @@ def update_current_track(title: str, artist: str, video_id: Optional[str], lang:
     state.last_line_key = None
     state.aligned_lyrics = []
 
+    song_id = f"{artist.strip()}|||{title.strip()}"
+    if video_id:
+        song_id += f"|||{video_id.strip()}"
+    state.song_key = f"{song_id}|||{state.lang.strip()}"
+
     safe_print("\n" + "=" * 70)
     safe_print(f"[{now_str()}] 🎵 NOVA FAIXA DETECTADA: {artist} - {title}")
     if video_id:
@@ -177,17 +182,17 @@ def update_current_track(title: str, artist: str, video_id: Optional[str], lang:
 
 @app.post("/api/sync")
 def sync_playback(payload: SyncPayload, request: Request):
-    req_lang = payload.lang.lower().strip() if payload.lang else state.lang
-    new_key = f"{payload.artist.strip()}|||{payload.title.strip()}|||{req_lang}"
+    song_id = f"{payload.artist.strip()}|||{payload.title.strip()}"
     if payload.videoId:
-        new_key += f"|||{payload.videoId.strip()}"
+        song_id += f"|||{payload.videoId.strip()}"
 
+    active_lang = state.lang
+    new_key = f"{song_id}|||{active_lang}"
     is_new_song = (new_key != state.song_key)
 
-    # Mudança de música ou de idioma
+    # Mudança de faixa
     if is_new_song:
-        state.song_key = new_key
-        update_current_track(payload.title, payload.artist, payload.videoId, lang=req_lang)
+        update_current_track(payload.title, payload.artist, payload.videoId, lang=active_lang)
 
     # Atualiza o timestamp atual e estado do player
     current_ms = int(payload.currentTime * 1000)
@@ -247,8 +252,43 @@ def change_language_internal(new_lang: str):
     safe_print(f"\n[{now_str()}] 🔄 Alterando idioma de '{old_lang.upper()}' para '{new_lang.upper()}'...")
 
     if state.title and state.artist:
-        state.song_key = None  # Força reprocessamento com o novo idioma
-        update_current_track(state.title, state.artist, state.video_id, lang=new_lang)
+        song_id = f"{state.artist.strip()}|||{state.title.strip()}"
+        if state.video_id:
+            song_id += f"|||{state.video_id.strip()}"
+        state.song_key = f"{song_id}|||{new_lang}"
+
+        # 1. Se ainda não temos letras com timestamps do YTM, busca
+        if not state.timed_lyrics:
+            safe_print(f"[{now_str()}] [1/2] 🔍 Buscando letras sincronizadas no YouTube Music (ytmusicapi)...")
+            state.timed_lyrics = ytm_manager.get_timed_lyrics(video_id=state.video_id or "", title=state.title, artist=state.artist) or []
+
+        # 2. Busca tradução no novo idioma
+        safe_print(f"[{now_str()}] [1/2] 🌐 Buscando tradução ({new_lang.upper()}) verso a verso no Letras.mus.br...")
+        cleaned_title = clean_song_title(state.title)
+        trans_dict, ordered_verses, trans_url = get_translation(state.artist, cleaned_title, lang=new_lang)
+        state.translation_dict = trans_dict
+        state.ordered_verses = ordered_verses
+        state.translation_url = trans_url
+
+        if ordered_verses or trans_dict:
+            safe_print(f"[{now_str()}] ✅ [LETRAS] {len(trans_dict)} versos traduzidos ({new_lang.upper()}) carregados com sucesso!")
+            safe_print(f"[{now_str()}] 🌐 Link: {trans_url}")
+        else:
+            safe_print(f"[{now_str()}] ⚠️ [LETRAS] Não foi possível carregar a tradução de '{cleaned_title}'.")
+
+        # 3. Re-alinha os versos
+        safe_print(f"[{now_str()}] [2/2] ⚙️ Re-alinhando versos no idioma {new_lang.upper()}...")
+        state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses)
+        state.last_line_key = None
+
+        # Reencontra a linha ativa no tempo atual para atualização imediata
+        active_line = find_active_aligned_line(state.aligned_lyrics, state.current_time_ms)
+        if active_line:
+            state.active_original = active_line.original
+            state.active_translation = active_line.translation
+            ts = format_timestamp(active_line.start_time)
+            safe_print(f"[{now_str()}] ✅ Tradução atualizada ({new_lang.upper()}): {ts} {active_line.original} => {active_line.translation}")
+
     return True
 
 

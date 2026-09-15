@@ -687,6 +687,17 @@ function sendSync() {
           lastLogTime = now;
         }
       } else {
+        if (response.data && response.data.lang && response.data.lang !== currentLang) {
+          currentLang = response.data.lang;
+          currentConfig.lang = currentLang;
+          console.log(`%c[LetrasBR]%c Idioma sincronizado com o servidor: ${currentLang.toUpperCase()}`, "color: #38bdf8; font-weight: bold;", "color: inherit;");
+          // Atualiza botões no modal de configurações se estiver aberto
+          document.querySelectorAll("#letrasbr-modal button[data-code]").forEach(b => {
+            const sel = (b.dataset.code === currentLang);
+            b.style.backgroundColor = sel ? "#0284c7" : "#27273a";
+            b.style.color = sel ? "#fff" : "#94a3b8";
+          });
+        }
         if (response.data && response.data.command) {
           executePlayerCommand(response.data.command);
         }

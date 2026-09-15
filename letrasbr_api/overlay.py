@@ -587,6 +587,11 @@ class LyricsOverlay:
                     b.configure(bg="#0284c7", fg="#ffffff")
                 else:
                     b.configure(bg="#27273a", fg="#94a3b8")
+            # Força atualização visual imediata
+            self.last_title = ""
+            self.last_orig = ""
+            self.last_trans = ""
+            self._tick()
 
         lang_buttons = {}
         langs = [("🇧🇷 PT", "pt"), ("🇺🇸 EN", "en"), ("🇪🇸 ES", "es"), ("🇫🇷 FR", "fr")]
