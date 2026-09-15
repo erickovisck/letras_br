@@ -56,19 +56,53 @@ def is_non_latin(text: str) -> bool:
     return bool(re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af\u0400-\u04ff]', text))
 
 
+def is_japanese(text: str) -> bool:
+    """Retorna True se contiver caracteres japoneses (Hiragana, Katakana ou Kanji)."""
+    return bool(re.search(r'[\u3040-\u30ff\u4e00-\u9fff]', text))
+
+
 def clean_song_title(title: str) -> str:
-    """Remove termos extras comuns no YouTube Music como (Official Video), (part. X), Remastered, etc."""
-    cleaned = re.sub(r"\(.*?(?:official|audio|video|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.).*?\)", "", title, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\[.*?(?:official|audio|video|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.).*?\]", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b(?:feat|ft|part)\.?\s+.*$", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"-\s*(?:remastered|live|official).*$", "", cleaned, flags=re.IGNORECASE)
-    return cleaned.strip()
+    """
+    Remove termos extras comuns como (Official Video), (part. X), (feat. X), Remastered,
+    além de desconsiderar blocos entre parênteses/colchetes no final do título
+    (ex: transliterações como '(bazovyj minimum)', '(feat. SABI)', '(qualquer coisa)', etc.).
+    """
+    if not title:
+        return ""
+
+    # 1. Remove blocos parentizados ou colchetes contendo termos comuns de metadata
+    # Usar [^)]* e [^\]]* garante que parênteses independentes não sejam agrupados indevidamente
+    cleaned = re.sub(
+        r'\([^)]*?(?:official|audio|video|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.|prod\.)[^)]*?\)',
+        '', title, flags=re.IGNORECASE
+    )
+    cleaned = re.sub(
+        r'\[[^\]]*?(?:official|audio|video|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.|prod\.)[^\]]*?\]',
+        '', cleaned, flags=re.IGNORECASE
+    )
+
+    # 2. Remove menções soltas de feat/ft/part no final da string
+    cleaned = re.sub(r'\b(?:feat|ft|part|prod)\.?\s+.*$', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'-\s*(?:remastered|live|official|audio|video).*$', '', cleaned, flags=re.IGNORECASE)
+
+    # 3. Desconsidera iterativamente parênteses/colchetes no final do título
+    # Ex: 'Базовый минимум (bazovyj minimum) (feat. SABI)' -> 'Базовый минимум'
+    prev = None
+    curr = cleaned.strip()
+    while prev != curr:
+        prev = curr
+        curr = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', curr).strip()
+
+    # 4. Remove pontuação solta residual no final (traços, barras, etc.)
+    curr = re.sub(r'[\s\-_/:|]+$', '', curr).strip()
+    return curr
 
 
 def split_multilingual(text: str) -> List[str]:
     """
     Separa títulos/nomes multilíngues (ex: 'ブルーバード - Blue Bird' -> ['Blue Bird', 'ブルーバード']).
     Prioriza versões latinas/romaji e japonês nativo sem termos de part./feat.
+    Também divide múltiplos artistas separados por vírgula, &, x, feat, etc.
     """
     if not text:
         return []
@@ -76,13 +110,13 @@ def split_multilingual(text: str) -> List[str]:
     candidates: List[str] = []
     text_clean = clean_song_title(text)
 
-    # 1. Separadores comuns: ' - ', ' / ', '|', '×'
-    parts = re.split(r'\s*[-/|×]\s*', text_clean)
+    # 1. Separadores comuns: ' - ', ' / ', '|', '×', ',', '&', ' feat. ', ' ft. '
+    parts = re.split(r'\s*(?:[-/|×,&]|(?:\b(?:feat|ft|part)\.?\b))\s*', text)
     latin_parts = [clean_song_title(p.strip()) for p in parts if is_latin(p) and not is_non_latin(p)]
     non_latin_parts = [clean_song_title(p.strip()) for p in parts if is_non_latin(p)]
 
     # 2. Parênteses: 'Nome (Name)' ou 'Name (Nome)'
-    match_paren = re.search(r'^(.*?)\s*[\(\[]([^\)\]]+)[\)\]](.*)$', text_clean)
+    match_paren = re.search(r'^(.*?)\s*[\(\[]([^\)\]]+)[\)\]](.*)$', text)
     if match_paren:
         p1 = clean_song_title((match_paren.group(1) + ' ' + match_paren.group(3)).strip())
         p2 = clean_song_title(match_paren.group(2).strip())
@@ -92,11 +126,11 @@ def split_multilingual(text: str) -> List[str]:
             elif is_non_latin(p) and p not in non_latin_parts:
                 non_latin_parts.append(p)
 
-    # 3. Transliteração Romaji para nomes nativos em japonês
+    # 3. Transliteração Romaji exclusivamente para nomes nativos em japonês
     romaji_parts = []
     if _kks:
         for nlp in non_latin_parts + [text_clean]:
-            if is_non_latin(nlp):
+            if is_japanese(nlp):
                 try:
                     conv = _kks.convert(nlp)
                     hep = " ".join([item["hepburn"] for item in conv]).strip()
@@ -105,7 +139,7 @@ def split_multilingual(text: str) -> List[str]:
                 except Exception:
                     pass
 
-    # Ordem: 1º Latino / Romaji, 2º Nativo Japonês, 3º Texto limpo
+    # Ordem: 1º Latino / Romaji, 2º Nativo Não-Latino, 3º Texto limpo
     for p in latin_parts + romaji_parts + non_latin_parts:
         if p and p not in candidates:
             candidates.append(p)
@@ -142,9 +176,10 @@ def search_letras_fallback(query: str, expected_titles: Optional[List[str]] = No
 
                 for doc in song_docs:
                     doc_title = doc.get("txt", "")
-                    doc_slug = slugify(clean_song_title(doc_title))
+                    cleaned_doc_title = clean_song_title(doc_title)
+                    doc_slug = slugify(cleaned_doc_title)
                     doc_url = doc.get("url", "").lower()
-                    doc_lower = doc_title.lower()
+                    doc_lower = cleaned_doc_title.lower()
 
                     for es in exp_slugs:
                         if es and (es == doc_slug or es in doc_url or doc_slug in es):
@@ -157,6 +192,9 @@ def search_letras_fallback(query: str, expected_titles: Optional[List[str]] = No
                             found_path = f"/{doc.get('dns')}/{doc.get('url')}"
                             log(f"Busca encontrou correspondência validada por texto: {found_path} ('{doc_title}' por '{doc.get('art')}')")
                             return found_path
+
+                log(f"Nenhum resultado da busca correspondeu aos títulos esperados: {expected_titles}")
+                return None
 
             # Se não especificou títulos esperados (busca com artista completo), usa o 1º doc
             doc = song_docs[0]
@@ -200,17 +238,14 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
                     cleaned_t = clean_song_title(t_cand)
                     title_slug = slugify(cleaned_t)
 
-                    # Busca por title exato
-                    song_div = soup.find("a", title=re.compile(f"^{re.escape(cleaned_t)}$", re.IGNORECASE))
-                    if song_div and "href" in song_div.attrs:
-                        log(f"Encontrado link por tag a[title]: {song_div.attrs['href']}")
-                        return song_div.attrs["href"]
-
-                    # Busca por texto dos links
+                    # Busca por title exato ou título limpo nos links
                     for a_tag in links:
                         tag_title = a_tag.get("title") or a_tag.get_text()
-                        if tag_title and slugify(clean_song_title(tag_title)) == title_slug:
-                            log(f"Encontrado link por título normalizado: {a_tag['href']}")
+                        if not tag_title:
+                            continue
+                        cleaned_tag = clean_song_title(tag_title)
+                        if cleaned_tag.lower() == cleaned_t.lower() or slugify(cleaned_tag) == title_slug:
+                            log(f"Encontrado link por título limpo: {a_tag['href']} ('{tag_title}')")
                             return a_tag["href"]
                         if a_tag["href"].rstrip("/").endswith(f"/{title_slug}"):
                             log(f"Encontrado link por sufixo de slug: {a_tag['href']}")
