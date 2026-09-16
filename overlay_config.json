@@ -1,11 +1,11 @@
 {
-  "x": -383,
-  "y": 509,
-  "width": 335,
-  "height": 125,
-  "opacity": 0.71,
-  "fontSize": 11,
-  "displayMode": "both",
+  "x": 53,
+  "y": 813,
+  "width": 435,
+  "height": 91,
+  "opacity": 0.79,
+  "fontSize": 15,
+  "displayMode": "orig",
   "lang": "pt",
   "locked": false
 }

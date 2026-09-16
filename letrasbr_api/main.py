@@ -17,16 +17,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-# Garante acesso aos módulos internos e ao ytmusicapi local
+# Garante acesso aos módulos internos
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 root_dir = os.path.abspath(os.path.join(current_dir, ".."))
-inner_ytm = os.path.join(root_dir, "ytmusicapi")
-if os.path.exists(os.path.join(inner_ytm, "ytmusicapi", "__init__.py")):
-    if inner_ytm not in sys.path:
-        sys.path.insert(0, inner_ytm)
 
 from scraper import get_translation, clean_song_title
 from aligner import align_lyrics, find_active_aligned_line, AlignedLine

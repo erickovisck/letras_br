@@ -2,14 +2,6 @@ import sys
 import os
 from typing import List, Optional
 
-# Garante acesso ao pacote ytmusicapi local
-current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(current_dir, ".."))
-inner_ytm = os.path.join(root_dir, "ytmusicapi")
-if os.path.exists(os.path.join(inner_ytm, "ytmusicapi", "__init__.py")):
-    if inner_ytm not in sys.path:
-        sys.path.insert(0, inner_ytm)
-
 from ytmusicapi import YTMusic
 from ytmusicapi.models.lyrics import LyricLine
 

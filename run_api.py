@@ -19,11 +19,6 @@ if __name__ == "__main__":
     if letrasbr_dir not in sys.path:
         sys.path.insert(0, letrasbr_dir)
 
-    inner_ytm = os.path.join(current_dir, "ytmusicapi")
-    if os.path.exists(os.path.join(inner_ytm, "ytmusicapi", "__init__.py")):
-        if inner_ytm not in sys.path:
-            sys.path.insert(0, inner_ytm)
-
     from main import app, state, change_language_internal, queue_command
     from overlay import LyricsOverlay
     from protocol import register_protocol

@@ -1,0 +1,5 @@
+requests
+fastapi
+uvicorn
+bs4
+ytmusicapi>=1.8.0
