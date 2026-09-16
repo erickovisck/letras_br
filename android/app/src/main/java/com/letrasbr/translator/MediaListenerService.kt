@@ -51,6 +51,9 @@ class MediaListenerService : NotificationListenerService() {
         super.onListenerDisconnected()
         isConnected = false
         stopSyncLoop()
+        CoroutineScope(Dispatchers.IO).launch {
+            ApiClient.clearPlayback()
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -170,5 +173,8 @@ class MediaListenerService : NotificationListenerService() {
         super.onDestroy()
         stopSyncLoop()
         serviceScope.cancel()
+        CoroutineScope(Dispatchers.IO).launch {
+            ApiClient.clearPlayback()
+        }
     }
 }

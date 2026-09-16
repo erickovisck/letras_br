@@ -180,6 +180,12 @@ class FloatingOverlayService : Service() {
         super.onDestroy()
         instance = null
         isRunning = false
+
+        // Avisa a API que o overlay foi fechado e encerra a sessão ativa no servidor
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            ApiClient.clearPlayback()
+        }
+
         overlayView?.let {
             try {
                 windowManager?.removeView(it)

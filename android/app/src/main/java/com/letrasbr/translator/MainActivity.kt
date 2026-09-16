@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etApiUrl: EditText
     private lateinit var btnTestConn: Button
     private lateinit var tvConnStatus: TextView
-    private lateinit var switchOverlay: Switch
+    private lateinit var btnToggleOverlay: com.google.android.material.button.MaterialButton
     private lateinit var rgLang: RadioGroup
 
     private val prefs by lazy { getSharedPreferences("letrasbr_prefs", Context.MODE_PRIVATE) }
@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissions()
+        updateOverlayButtonState()
     }
 
     private fun bindViews() {
@@ -48,7 +49,7 @@ class MainActivity : AppCompatActivity() {
         etApiUrl = findViewById(R.id.et_api_url)
         btnTestConn = findViewById(R.id.btn_test_connection)
         tvConnStatus = findViewById(R.id.tv_connection_status)
-        switchOverlay = findViewById(R.id.switch_overlay)
+        btnToggleOverlay = findViewById(R.id.btn_toggle_overlay)
         rgLang = findViewById(R.id.rg_lang)
     }
 
@@ -66,7 +67,17 @@ class MainActivity : AppCompatActivity() {
             else -> findViewById<RadioButton>(R.id.rb_pt).isChecked = true
         }
 
-        switchOverlay.isChecked = FloatingOverlayService.isRunning
+        updateOverlayButtonState()
+    }
+
+    private fun updateOverlayButtonState() {
+        if (FloatingOverlayService.isRunning) {
+            btnToggleOverlay.text = "Fechar Janela Flutuante"
+            btnToggleOverlay.setBackgroundColor(getColor(R.color.error_red))
+        } else {
+            btnToggleOverlay.text = "Abrir Janela Flutuante"
+            btnToggleOverlay.setBackgroundColor(getColor(R.color.accent_primary))
+        }
     }
 
     private fun setupListeners() {
@@ -102,6 +113,9 @@ class MainActivity : AppCompatActivity() {
                 if (ok) {
                     tvConnStatus.text = "🟢 Conexão com a API OK!"
                     tvConnStatus.setTextColor(getColor(R.color.success_green))
+                    // Sincroniza idioma configurado no servidor
+                    val savedLang = prefs.getString("lang", "pt") ?: "pt"
+                    ApiClient.changeLanguage(savedLang)
                 } else {
                     tvConnStatus.text = "🔴 Falha ao conectar. Verifique o IP e a porta."
                     tvConnStatus.setTextColor(getColor(R.color.error_red))
@@ -109,9 +123,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Ativar/Desativar Janela Flutuante
-        switchOverlay.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
+        // Botão para Abrir / Fechar Janela Flutuante
+        btnToggleOverlay.setOnClickListener {
+            if (FloatingOverlayService.isRunning) {
+                stopService(Intent(this, FloatingOverlayService::class.java))
+                lifecycleScope.launch {
+                    ApiClient.clearPlayback()
+                }
+                btnToggleOverlay.postDelayed({ updateOverlayButtonState() }, 150)
+            } else {
                 if (checkOverlayPermission()) {
                     val intent = Intent(this, FloatingOverlayService::class.java)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -119,16 +139,14 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         startService(intent)
                     }
+                    btnToggleOverlay.postDelayed({ updateOverlayButtonState() }, 150)
                 } else {
-                    switchOverlay.isChecked = false
                     Toast.makeText(this, "Conceda a permissão de Janela Flutuante primeiro!", Toast.LENGTH_SHORT).show()
                 }
-            } else {
-                stopService(Intent(this, FloatingOverlayService::class.java))
             }
         }
 
-        // Seleção de Idioma
+        // Seleção de Idioma (envia imediatamente para a API no servidor)
         rgLang.setOnCheckedChangeListener { _, checkedId ->
             val lang = when (checkedId) {
                 R.id.rb_en -> "en"
@@ -138,6 +156,23 @@ class MainActivity : AppCompatActivity() {
             }
             MediaListenerService.selectedLang = lang
             prefs.edit().putString("lang", lang).apply()
+
+            lifecycleScope.launch {
+                val ok = ApiClient.changeLanguage(lang)
+                if (ok) {
+                    Toast.makeText(this@MainActivity, "Idioma alterado para ${lang.uppercase()} no servidor!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Se a janela flutuante não estiver rodando em segundo plano, limpa a sessão no servidor
+        if (!FloatingOverlayService.isRunning) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                ApiClient.clearPlayback()
+            }
         }
     }
 

@@ -88,6 +88,37 @@ object ApiClient {
             false
         }
     }
+
+    suspend fun changeLanguage(lang: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("$baseUrl/api/language")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.connectTimeout = 2500
+            conn.readTimeout = 2500
+
+            val json = JSONObject().apply { put("lang", lang) }
+            OutputStreamWriter(conn.outputStream).use { it.write(json.toString()) }
+            conn.responseCode == 200
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun clearPlayback(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("$baseUrl/api/playback/clear")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 2500
+            conn.readTimeout = 2500
+            conn.responseCode == 200
+        } catch (e: Exception) {
+            false
+        }
+    }
 }
 
 data class SyncResult(

@@ -21,3 +21,10 @@ Desktop.ini
 # Reference folders
 Music-LAW-Lyrics-AnyWhere-main/
 YouTubeMusic-Beautifier-main/
+
+# Android
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab

@@ -390,6 +390,38 @@ def api_player_action(payload: PlayerActionPayload):
     return {"status": "ok", "action": action, "source": payload.source or state.source}
 
 
+def reset_playback_state():
+    """Reseta o estado da reprodução quando uma sessão é encerrada pelo cliente."""
+    state.song_key = None
+    state.title = ""
+    state.artist = ""
+    state.album = None
+    state.track_id = None
+    state.video_id = None
+    state.timed_lyrics = []
+    state.ordered_verses = []
+    state.aligned_lyrics = []
+    state.translation_dict = {}
+    state.translation_url = None
+    state.last_line_key = None
+    state.current_time_ms = 0
+    state.active_original = ""
+    state.active_translation = ""
+    state.is_paused = True
+    state.current_seconds = 0.0
+    state.duration_seconds = 0.0
+    safe_print(f"[{now_str()}] ⏹️ Sessão de reprodução encerrada pelo cliente. Estado resetado.")
+
+
+@app.post("/api/playback/clear")
+@app.post("/api/playback/stop")
+@app.post("/api/reset")
+def api_playback_clear():
+    """Limpa o estado atual de reprodução no servidor (chamado ao fechar o app/overlay)."""
+    reset_playback_state()
+    return {"status": "ok", "message": "Playback state cleared successfully"}
+
+
 @app.get("/api/current")
 def get_current():
     return {

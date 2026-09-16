@@ -169,13 +169,16 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/switch_overlay"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_toggle_overlay"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Ativar Balão Flutuante de Letras"
+                android:layout_height="52dp"
+                android:text="Abrir Janela Flutuante"
+                android:textSize="14sp"
+                android:textStyle="bold"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+                android:backgroundTint="@color/accent_primary"
+                app:cornerRadius="8dp" />
 
             <!-- Seleção de Idioma -->
             <TextView
