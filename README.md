@@ -177,13 +177,15 @@ The desktop server powers the lyrics alignment engine, fetches translations, and
 
 ### 2. Quickstart (Windows)
 
-Simply double-click the included batch script in the root directory:
+You have two ready-to-use scripts in the root directory:
+
+- **`configurar_ambiente.bat`**: Runs the complete initial configuration (validates Python, creates `.venv`, installs `requirements.txt`, and registers Windows protocol).
+- **`iniciar_servidor.bat`**: Starts the server and overlay. **Self-healing:** If the virtual environment or dependencies are not loaded, it automatically configures them before launching!
 
 ```cmd
+# Simply double-click:
 iniciar_servidor.bat
 ```
-
-This will automatically create a virtual environment, install all dependencies (including `ytmusicapi`, `fastapi`, and `uvicorn`), and start both the server and desktop floating overlay.
 
 ### 3. Manual Setup & CLI Options
 

@@ -177,13 +177,15 @@ O servidor local é o motor que busca as letras, calcula o alinhamento com a tra
 
 ### 2. Início Rápido (Windows)
 
-Basta dar um duplo clique no executável em lote na raiz do projeto:
+Você possui dois scripts prontos na raiz do projeto:
+
+- **`configurar_ambiente.bat`**: Executa a configuração inicial completa (valida o Python, cria o `.venv`, instala o `requirements.txt` e registra o protocolo no Windows).
+- **`iniciar_servidor.bat`**: Inicia o servidor e o overlay. **Auto-configurável:** Se o ambiente virtual ou as dependências ainda não tiverem sido carregados, ele executa essa configuração automaticamente antes de iniciar!
 
 ```cmd
+# Basta dar um duplo clique:
 iniciar_servidor.bat
 ```
-
-O script criará o ambiente virtual `.venv`, instalará automaticamente todos os pacotes necessários (incluindo `ytmusicapi`, `fastapi` e `uvicorn`) e abrirá a janela do servidor juntamente com o overlay flutuante.
 
 ### 3. Instalação Manual & Opções via CLI
 
