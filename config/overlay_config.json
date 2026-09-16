@@ -1,0 +1,18 @@
+{
+  "x": -7,
+  "y": 901,
+  "width": 769,
+  "height": 186,
+  "opacity": 0.63,
+  "bgColor": "#000000",
+  "origColor": "#e6f2ff",
+  "transColor": "#f8080c",
+  "fontFamily": "Yu Gothic UI",
+  "fontSize": 21,
+  "fontBold": true,
+  "fontItalic": false,
+  "displayMode": "orig",
+  "lang": "pt",
+  "locked": false,
+  "serverUrl": "http://127.0.0.1:8000"
+}

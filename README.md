@@ -5,14 +5,15 @@
 
 # LetrasBR - Real-time Synced Lyrics & Translation
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg?style=flat-square)](https://github.com/erickovisck/letras_br)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg?style=flat-square)](https://github.com/erickovisck/letras_br)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt6)-41CD52.svg?style=flat-square&logo=qt&logoColor=white)](https://www.qt.io/)
+[![Windows Media](https://img.shields.io/badge/Windows-GSMTC%20Native-0078D6.svg?style=flat-square&logo=windows&logoColor=white)](https://learn.microsoft.com)
 [![Android Version](https://img.shields.io/badge/android-API%2026%2B-3DDC84.svg?style=flat-square&logo=android&logoColor=white)](https://developer.android.com)
-[![Extension Manifest](https://img.shields.io/badge/extension-Manifest%20V3-orange.svg?style=flat-square&logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Download APK](https://img.shields.io/badge/Download%20APK-v2.1.0-brightgreen.svg?style=flat-square&logo=android)](https://github.com/erickovisck/letras_br/releases/latest)
 
-> **A modern, lightweight ecosystem for real-time synchronized music lyrics and translation across YouTube Music and Spotify Web. Includes a customizable desktop floating overlay (always-on-top), a Chromium browser extension, a web Picture-in-Picture mode, and a native Android application.**
+> **A modern, complete ecosystem for real-time synchronized music lyrics and translations. Now 100% native desktop on Windows with PySide6 (Qt 6) and direct Windows Media Controls (GSMTC) integration — seamlessly detects YouTube Music, Spotify, and browser media players without needing browser extensions!**
 
 ---
 
@@ -20,24 +21,17 @@
 
 - [Switch Language](#-switch-language)
 - [Key Features](#-key-features)
-- [Supported Platforms & Ecosystem](#-supported-platforms--ecosystem)
-- [Architecture & Workflow](#-architecture--workflow)
-- [Browser Extension Installation](#-browser-extension-installation)
-  - [1. Chrome, Brave & Edge Setup](#1-chrome-brave--microsoft-edge-setup)
-  - [2. Verifying and Using the Extension](#2-verifying-and-using-the-extension)
-- [Desktop Server & Overlay Setup](#-desktop-server--overlay-setup)
-  - [1. Prerequisites](#1-prerequisites)
-  - [2. Quickstart (Windows)](#2-quickstart-windows)
-  - [3. Manual Setup & CLI Options](#3-manual-setup--cli-options)
-- [Android App & APK Download](#-android-app--apk-download)
-  - [1. APK Installation](#1-apk-installation-ready-to-use)
-  - [2. Granting Permissions](#2-granting-permissions)
-  - [3. Building from Source](#3-building-from-source)
+- [Supported Platforms](#-supported-platforms)
+- [Project Directory Structure](#-project-directory-structure)
+- [Desktop Quickstart (Windows)](#-desktop-quickstart-windows)
+  - [1. LetrasBR.exe Executable & Windows Search](#1-letrasbrexe-executable--windows-search)
+  - [2. Starting via Batch Script (.bat)](#2-starting-via-batch-script-bat)
+  - [3. How the Native Executable (.exe) Works](#3-how-the-native-executable-exe-works)
+- [Visual Interface & Customization](#-visual-interface--customization)
+- [Android Application & APK Download](#-android-application--apk-download)
 - [Mobile Web & Picture-in-Picture (PiP)](#-mobile-web--picture-in-picture-pip)
-- [Configuration & Settings](#-configuration--settings)
+- [Web Extension (Legacy / Optional)](#-web-extension-legacy--optional)
 - [Troubleshooting & FAQ](#-troubleshooting--faq)
-- [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
 - [License & Author](#-license--author)
 
 ---
@@ -51,275 +45,199 @@
 
 ## ✨ Key Features
 
-- **Real-time Sub-second Synchronization:** Intelligently aligns time-stamped lyrics directly with the audio stream of YouTube Music and Spotify Web.
-- **Multilingual Real-time Translations:** Instant line-by-line translations for Portuguese (PT-BR), English (EN), Spanish (ES), and French (FR).
-- **Desktop Floating Overlay (Always-On-Top):** Minimalist, draggable, transparent Tkinter-based HUD window with customizable opacity, font size, and color themes.
-- **Chromium Browser Extension (Manifest V3):** Automatically extracts metadata and timestamps from active tabs without requiring web account credentials.
-- **Native Android App (Kotlin):** Background service using `MediaSessionManager` and `NotificationListenerService` with a floating draggable overlay over any Android app.
-- **Mobile Picture-in-Picture (PiP) Player:** Native browser PiP canvas video generator for floating lyrics on devices where native overlays aren't possible.
-- **Integrated Media Player Controls:** Pause, play, and skip songs directly from the desktop or mobile floating overlay.
-- **1-Click Launch Protocol:** Windows custom protocol (`letrasbr://`) to start the desktop server and overlay straight from browser buttons.
+- **100% Native Desktop (Windows GSMTC):** Monitors YouTube Music (in any browser such as Chrome, Edge, Brave, etc.), Spotify desktop app, and system players directly via the Windows OS API, eliminating extension reliance.
+- **Native Integrated Executable (`LetrasBR.exe`):** Silent Win32 launcher (no black CMD terminal window) with embedded icon and indexed in the Windows Start Menu — just press `Win` and type `LetrasBR`.
+- **3D Perspective Verse Animation (Instagram Stories Style):** The previous verse shrinks and moves back/up in 3D perspective while the new verse smoothly transitions from the background to the foreground at 60 FPS using pure `QPainter` with no opaque artifacts.
+- **Miniplayer with Timeline Seek Slider:** ⏮, ⏯, ⏭ buttons and an interactive timeline seek slider to scrub forward or backward directly from the overlay, with real-time timestamp display (`01:23 / 03:45`).
+- **Freeform Resize Grip (`⇲`):** Located at the bottom-right corner with a diagonal resize cursor to adjust width and height simultaneously.
+- **Comprehensive Settings Menu (`⚙️`):**
+  - Background color picker with alpha/opacity slider.
+  - Independent color pickers for original lyrics and translations.
+  - Complete typography selection with `QFontComboBox` (all installed system fonts).
+  - Divided ergonomic font size adjustment: dedicated `[−]` and `[+]` buttons and precision slider (10pt to 36pt).
+  - Bold and Italic toggles.
+  - Display modes: Both, Translation Only, or Original Only.
+  - Server URL configuration to connect to remote servers on local network or cloud.
+- **Smart Autoplay & Fast Track-Switching Handling:** Instant visual status feedback (*"Carregando tradução..."*), atomic request cancellation to prevent stale lyric overlap, and advanced YouTube title cleaning (`(Official Video)`, `(Clip Oficial)`, `[Visualizer]`, etc.).
+- **System Tray Integration:** Taskbar notification area icon with context menu to toggle overlay visibility, control playback, or exit.
+- **Multilingual Translations:** Instant line-by-line translations for Portuguese (PT-BR), English (EN), Spanish (ES), and French (FR).
 
 ---
 
-## 📱 Supported Platforms & Ecosystem
+## 📱 Supported Platforms
 
 | Component | Platform / Tech | Description | Status |
 | :--- | :--- | :--- | :---: |
-| **Browser Extension** | Chromium (Chrome, Brave, Edge, Opera) | MV3 content script detecting playback on YouTube Music & Spotify | ✅ Available |
-| **Desktop Server & Overlay** | Python 3.10+ / FastAPI / Tkinter | Local API on `localhost:8000` + Floating HUD overlay | ✅ Available |
-| **Native Android App** | Android 8.0+ (Kotlin) | Background media listener + System Alert floating window | ✅ APK Available |
-| **Mobile Web Overlay** | HTML5 Canvas / PiP Video | Responsive web player with Picture-in-Picture subtitles | ✅ Available |
+| **Main Desktop App** | Windows 10/11 (PySide6 / WinRT GSMTC) | Executable `LetrasBR.exe`, translucent overlay, native capture | ✅ Available (v3.0) |
+| **Decoupled API Server** | Python 3.10+ / FastAPI | Local or remote backend for lyric scraping and alignment | ✅ Available |
+| **Native Android App** | Android 8.0+ (Kotlin) | Native media listener + Floating HUD overlay (`SYSTEM_ALERT`) | ✅ APK Available |
+| **Web Extension (Optional)** | Chromium (Chrome, Brave, Edge, Opera) | MV3 content script for browsers (kept in `extension/`) | ✅ Legacy/Optional |
 
 ---
 
-## 🏗 Architecture & Workflow
+## 📁 Project Directory Structure
+
+The project is cleanly and modularly organized:
 
 ```text
-  +-------------------------------------------------------------+
-  |                   Music Source in Browser                   |
-  |             (music.youtube.com / open.spotify.com)          |
-  +-------------------------------------------------------------+
-                                 |
-                                 | (DOM playback time & track metadata)
-                                 v
-  +-------------------------------------------------------------+
-  |              LetrasBR Browser Extension (MV3)               |
-  |     - content.js / spotify_content.js                       |
-  |     - background.js (proxy & heartbeat)                     |
-  +-------------------------------------------------------------+
-                                 |
-                                 | HTTP POST /sync (title, artist, position, is_paused)
-                                 v
-  +-------------------------------------------------------------+
-  |              LetrasBR Python Core API (FastAPI)             |
-  |                     (http://localhost:8000)                 |
-  +-------------------------------------------------------------+
-            |                                       |
-            | (Scrapes & Aligns Lyrics)             | (Broadcasting state)
-            v                                       v
-  +--------------------+         +--------------------------------------+
-  | Providers / Scraper|         | Desktop Floating Overlay (Tkinter)   |
-  | - Letras.mus.br    |         | - Draggable HUD, Click-through       |
-  | - YtMusicApi Sync  |         | - Media Controls (Play/Pause, Skip)  |
-  +--------------------+         +--------------------------------------+
-                                                    ^
-                                                    | (HTTP polling / sync)
-                                 +--------------------------------------+
-                                 | Native Android App / Mobile Web PiP  |
-                                 | - Floating Window (SYSTEM_ALERT)     |
-                                 +--------------------------------------+
+TRADUTOR YT MUSIC/
+├── LetrasBR.exe              # Main launcher executable (root folder)
+├── run_api.py                # Python entry point (PySide6 GUI + FastAPI server)
+├── configurar_ambiente.bat   # Environment setup and .venv creator (Python >= 3.10)
+├── iniciar_servidor.bat      # Batch script for quick terminal launch
+│
+├── assets/                   # Application icons and branding
+│   ├── app_icon.ico          # Native Windows icon (used for .exe and system tray)
+│   └── app_icon.png          # High-resolution PNG icon
+│
+├── config/                   # User configuration files
+│   └── overlay_config.json   # Colors, fonts, opacity, coordinates, and window dimensions
+│
+├── scripts/                  # Build and Windows registration utilities
+│   ├── Launcher.cs           # C# source code for silent Win32 launcher
+│   ├── build_exe.bat         # Compiles LetrasBR.exe using native .NET csc.exe
+│   ├── registrar_menu_iniciar.bat # Registers Start Menu shortcut for Windows Search
+│   └── registrar_protocolo.bat    # Registers letrasbr:// URL protocol in Windows Registry
+│
+├── letrasbr_api/             # Core backend and graphical interface modules
+│   ├── overlay_qt.py         # PySide6 GUI (HUD overlay, 3D verse animation, controls)
+│   ├── media_monitor.py      # Native Windows Media Monitor (WinRT GSMTC)
+│   ├── lyrics_client.py      # Async lyrics worker with request cancellation
+│   ├── scraper.py            # letras.mus.br lyrics and translation scraper
+│   ├── aligner.py            # Verse-by-verse temporal alignment engine
+│   ├── config.py             # Configuration file manager
+│   ├── main.py               # REST API endpoints (FastAPI)
+│   └── requirements.txt      # Python dependencies (PySide6, winrt, fastapi, etc.)
+│
+├── android/                  # Native Kotlin Android application
+└── extension/                # Chromium Manifest V3 Web Extension (legacy/optional)
 ```
 
 ---
 
-## 📦 Browser Extension Installation
+## 🚀 Desktop Quickstart (Windows)
 
-The extension allows YouTube Music and Spotify Web to communicate current playback time and song info with the local sync engine.
+### Prerequisites
+- **Windows 10 or 11** (64-bit)
+- **Python 3.10 or higher** installed and on PATH ([Download Python](https://www.python.org/downloads/)).
 
-### 1. Chrome, Brave & Microsoft Edge Setup
+### 1. `LetrasBR.exe` Executable & Windows Search
 
-1. **Download or Clone this Repository:**
-   ```bash
-   git clone https://github.com/erickovisck/letras_br.git
-   ```
-   *(Or download the ZIP file from GitHub and extract it to your machine).*
+`LetrasBR.exe` is located at the root of the project directory.
 
-2. **Open the Extensions Page in your browser:**
-   - **Google Chrome:** Navigate to `chrome://extensions`
-   - **Brave Browser:** Navigate to `brave://extensions`
-   - **Microsoft Edge:** Navigate to `edge://extensions`
-   - **Opera / Opera GX:** Navigate to `opera://extensions`
+1. **Initial Environment Setup:**
+   - Run `configurar_ambiente.bat`. It checks Python version compatibility, sets up `.venv`, installs requirements, and registers the Windows Start Menu shortcut.
+2. **Open via Windows Start Menu:**
+   - Press the `Win` key on your keyboard, type **`LetrasBR`**, and hit **Enter**.
+3. **Direct Launch:**
+   - Double-click `LetrasBR.exe`. The app starts completely silently without opening command prompt windows.
 
-3. **Enable Developer Mode:**
-   - Look for the **Developer mode** (*Modo do desenvolvedor*) toggle switch, usually located in the top-right corner, and turn it **ON**.
+### 2. Starting via Batch Script (.bat)
 
-4. **Load Unpacked Extension:**
-   - Click on the **"Load unpacked"** (*Carregar sem compactação*) button in the top-left toolbar.
-   - In the file picker dialog, navigate to the cloned folder and select the **`extension`** directory:
-     ```text
-     letras_br/
-     ├── android/
-     ├── extension/   <--- SELECT THIS FOLDER
-     │   ├── manifest.json
-     │   ├── background.js
-     │   ├── content.js
-     │   └── spotify_content.js
-     ├── letrasbr_api/
-     ...
+If you wish to view real-time log outputs or debug messages:
+- Double-click `iniciar_servidor.bat`.
+
+---
+
+### 3. How the Native Executable (.exe) Works
+
+`LetrasBR.exe` was designed to eliminate the typical black console window (`cmd.exe`) when launching Python applications on Windows.
+
+#### The Process:
+1. **C# Source Code (`scripts/Launcher.cs`):**
+   - A Win32 application compiled as `WinExe` (GUI application with no console attached).
+   - Locates `.venv\Scripts\pythonw.exe` in the application directory.
+   - If `.venv` does not exist yet, it triggers `iniciar_servidor.bat` for automatic setup.
+   - Spawns the Python process with `CreateNoWindow = true` and `UseShellExecute = false`.
+2. **Native Windows Compiler (`csc.exe`):**
+   - Requires no bulky external toolchains like Visual Studio or PyInstaller.
+   - Uses the built-in Microsoft .NET Framework compiler present on every Windows 10/11 system at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`.
+   - Embeds the project icon (`assets/app_icon.ico`) directly into the `.exe`.
+3. **Recompiling:**
+   - To recompile the executable at any time after modifications, simply run:
+     ```cmd
+     scripts\build_exe.bat
      ```
 
-5. **Confirmation:**
-   - The extension **LetrasBR Tradutor - YouTube Music & Spotify** will now appear in your list of installed extensions with version `2.0.0+`.
+---
+
+## 🎨 Visual Interface & Customization
+
+The floating overlay can be fully personalized to match your desktop aesthetic:
+
+- **Drag & Reposition:** Click and drag the dark top bar to place the overlay anywhere on your screens.
+- **Freeform Resize:** Click and drag the `⇲` handle at the bottom right corner.
+- **Scrub / Seek Audio:** Use the interactive progress slider in the top bar beside the media buttons.
+- **Settings Menu (`⚙️`):**
+  - Adjust background color and opacity/transparency in real time.
+  - Choose independent colors for original and translated lyrics.
+  - Select any installed font family and adjust font size using ergonomic `[−]` and `[+]` buttons or slider.
+  - Toggle Bold and Italic styles.
+- **System Tray:** Right-click the LetrasBR tray icon next to the Windows clock for quick media actions or to exit.
 
 ---
 
-### 2. Verifying and Using the Extension
+## 📱 Android Application & APK Download
 
-1. Ensure the desktop server is running (see [Desktop Server Setup](#-desktop-server--overlay-setup)).
-2. Open [YouTube Music](https://music.youtube.com) or [Spotify Web](https://open.spotify.com).
-3. In the bottom-right corner of the player, a floating status badge `⚙️` will appear.
-4. Play any track: the extension will detect song changes and sync lyrics automatically!
+A native Kotlin Android companion app displays floating lyrics over YouTube Music on mobile devices.
 
----
+### 1. Download the APK
 
-## 🖥️ Desktop Server & Overlay Setup
+Grab the latest prebuilt APK from [Releases](https://github.com/erickovisck/letras_br/releases/latest):
 
-The desktop server powers the lyrics alignment engine, fetches translations, and displays the transparent floating overlay.
+[![Download APK](https://img.shields.io/badge/Download-APK%20Android%20(v2.1.0)-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/erickovisck/letras_br/releases/latest)
 
-### 1. Prerequisites & Dependencies
-
-- Python 3.10 or higher installed with Tkinter support:
-  ```bash
-  python --version
-  ```
-- **[ytmusicapi](https://github.com/sigma67/ytmusicapi)** ([PyPI](https://pypi.org/project/ytmusicapi/)): The official Python client used by the backend to query YouTube Music's internal endpoints for time-stamped lyrics.
-
-### 2. Quickstart (Windows)
-
-You have two ready-to-use scripts in the root directory:
-
-- **`configurar_ambiente.bat`**: Runs the complete initial configuration (validates Python, creates `.venv`, installs `requirements.txt`, and registers Windows protocol).
-- **`iniciar_servidor.bat`**: Starts the server and overlay. **Self-healing:** If the virtual environment or dependencies are not loaded, it automatically configures them before launching!
-
-```cmd
-# Simply double-click:
-iniciar_servidor.bat
-```
-
-### 3. Manual Setup & CLI Options
-
-```bash
-# 1. Create and activate a virtual environment
-python -m venv .venv
-.venv\Scripts\activate       # On Windows
-# source .venv/bin/activate  # On Linux/macOS
-
-# 2. Install dependencies (including ytmusicapi)
-pip install -r letrasbr_api/requirements.txt
-
-# Alternatively, install ytmusicapi directly:
-# pip install ytmusicapi
-
-# 3. Register 1-click browser protocol (Windows only, optional)
-python letrasbr_api/protocol.py
-
-# 4. Start the server and overlay
-python run_api.py
-```
-
-#### Headless Mode (Server Only)
-If you only want the API without the desktop Tkinter overlay (e.g., when serving to an Android device on your local network):
-
-```bash
-python run_api.py --no-overlay
-```
-
----
-
-## 📱 Android App & APK Download
-
-A native Kotlin Android application is provided to display synchronized lyrics directly over the official YouTube Music mobile app.
-
-### 1. APK Installation (Ready to Use)
-
-You can download the pre-compiled standalone APK directly from GitHub Releases:
-
-[![Download APK](https://img.shields.io/badge/Download-Android%20APK%20(v2.1.0)-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/erickovisck/letras_br/releases/latest)
-
-> 💡 *Note: If you are downloading the APK directly to your phone, enable "Install unknown apps" in your browser/file manager settings.*
-
-### 2. Granting Permissions
-
-To allow real-time background detection and the floating HUD:
-1. Open **LetrasBR Tradutor** on your phone.
-2. Grant **Notification / Media Listener Access** (to detect what is playing in YouTube Music).
-3. Grant **Display Over Other Apps** permission (to draw the floating subtitle box).
-4. Enter your computer's local IP address running the API (e.g. `http://192.168.1.15:8000`).
-5. Tap **Test Connection**, switch on **Enable Floating Overlay**, and enjoy!
-
-### 3. Building from Source
-
-To compile the Android app manually:
-
-```bash
-cd android
-./gradlew assembleDebug
-```
-The compiled APK will be generated at:
-`android/app/build/outputs/apk/debug/app-debug.apk`.
+### 2. Required Permissions:
+1. Grant **Notification Access / Media Session** permission.
+2. Grant **Display over other apps** (Draw overlay) permission.
+3. Enter your computer's local IP address (e.g. `http://192.168.1.15:8000`) and tap **Test Connection**.
 
 ---
 
 ## 📱 Mobile Web & Picture-in-Picture (PiP)
 
-If you are on iOS or prefer not to install the native Android app:
+If you use iOS or prefer not to install the Android APK:
 
-1. Connect your phone to the same Wi-Fi network as your PC.
-2. Open your mobile browser and access:
+1. Connect your smartphone to the same Wi-Fi network as your PC.
+2. In your mobile browser, navigate to:
    ```text
    http://<YOUR-PC-IP>:8000/mobile
    ```
-3. Tap the **📺 PiP** button to launch a native Picture-in-Picture floating subtitle window over any app!
+3. Tap **📺 PiP** to launch floating synchronized subtitles in a native Picture-in-Picture window.
 
 ---
 
-## ⚙️ Configuration & Settings
+## 🧩 Web Extension (Legacy / Optional)
 
-Settings can be toggled in real-time through the desktop overlay gear icon `⚙️` or via the web extension:
-
-- **Languages:** Portuguese (`pt`), English (`en`), Spanish (`es`), French (`fr`).
-- **Display Modes:** 
-  - `both`: Original line + Translated line.
-  - `translation`: Translated line only.
-  - `original`: Original lyric only.
-- **Visuals:** Window opacity slider, font size adjustment, dark theme presets.
+The Chromium extension (in `extension/`) remains available for direct in-browser injection:
+1. Navigate to `chrome://extensions` (or `edge://extensions`, `brave://extensions`).
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select the `extension/` directory.
 
 ---
 
 ## ❓ Troubleshooting & FAQ
 
 <details>
-<summary><strong>1. The extension says "Offline" or fails to connect</strong></summary>
-Make sure the desktop server is running by executing <code>python run_api.py</code> or double-clicking <code>iniciar_servidor.bat</code>. Verify that <a href="http://localhost:8000/">http://localhost:8000/</a> responds in your browser.
+<summary><strong>1. LetrasBR is not detecting what is playing</strong></summary>
+Ensure YouTube Music or Spotify is playing audio on Windows. Check if the Windows Media flyout appears when pressing volume keys on your keyboard with track information.
 </details>
 
 <details>
-<summary><strong>2. Floating overlay is not displaying on top of games/fullscreen video</strong></summary>
-Ensure the target game/player is in <em>Borderless Windowed</em> mode rather than Exclusive Fullscreen, which restricts Windows topmost overlay windows.
+<summary><strong>2. LetrasBR.exe does not start</strong></summary>
+Run <code>configurar_ambiente.bat</code> once to ensure the <code>.venv</code> virtual environment with Python >= 3.10 and all packages in <code>requirements.txt</code> have been installed.
 </details>
 
 <details>
-<summary><strong>3. Android app cannot connect to the server</strong></summary>
-Ensure both your Android phone and PC are connected to the exact same Wi-Fi network. Check your Windows Firewall to verify port <code>8000</code> is not blocked for incoming local connections.
+<summary><strong>3. The overlay doesn't stay above full-screen games</strong></summary>
+Set your game to <em>Borderless Windowed</em> mode, as Windows Exclusive Fullscreen blocks third-party overlay windows.
 </details>
-
----
-
-## 🗺 Roadmap
-
-- [ ] Chrome Web Store official release.
-- [ ] Apple Music Web integration.
-- [ ] Offline lyrics caching with SQLite.
-- [ ] Synchronized word-by-word karaoke highlighting.
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
-
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes in Portuguese (`git commit -m 'feat: adiciona suporte ao Apple Music'`).
-4. Push to the branch (`git push origin feature/amazing-feature`).
-5. Open a Pull Request.
 
 ---
 
 ## 📄 License & Author
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Distributed under the **MIT License**. See `LICENSE` for details.
 
 **Author:** [Erick Fernando Martins Santos](https://github.com/erickovisck)  
 **GitHub:** [@erickovisck](https://github.com/erickovisck)  

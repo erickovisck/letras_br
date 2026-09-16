@@ -71,15 +71,15 @@ def clean_song_title(title: str) -> str:
         return ""
 
     # 1. Remove blocos parentizados ou colchetes contendo termos comuns de metadata
-    # Usar [^)]* e [^\]]* garante que parênteses independentes não sejam agrupados indevidamente
     cleaned = re.sub(
-        r'\([^)]*?(?:official|audio|video|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.|prod\.)[^)]*?\)',
+        r'\([^)]*?(?:official|audio|video|clipe?|clip|visualizer|lyric|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.|prod\.|legendado|tradu[cç][aã]o|extended)[^)]*?\)',
         '', title, flags=re.IGNORECASE
     )
     cleaned = re.sub(
-        r'\[[^\]]*?(?:official|audio|video|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.|prod\.)[^\]]*?\]',
+        r'\[[^\]]*?(?:official|audio|video|clipe?|clip|visualizer|lyric|remaster|vers[aã]o|live|ao vivo|feat|ft\.|part\.|prod\.|legendado|tradu[cç][aã]o|extended)[^\]]*?\]',
         '', cleaned, flags=re.IGNORECASE
     )
+
 
     # 2. Remove menções soltas de feat/ft/part no final da string
     cleaned = re.sub(r'\b(?:feat|ft|part|prod)\.?\s+.*$', '', cleaned, flags=re.IGNORECASE)

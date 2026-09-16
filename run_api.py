@@ -3,6 +3,12 @@ import sys
 import threading
 import time
 
+# Garante stdout e stderr validos quando executado pelo pythonw.exe (sem console)
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 # Força UTF-8 no console do Windows
 if sys.platform == "win32":
     try:
@@ -20,37 +26,36 @@ if __name__ == "__main__":
         sys.path.insert(0, letrasbr_dir)
 
     from main import app, state, change_language_internal, queue_command
-    from overlay import LyricsOverlay
     from protocol import register_protocol
 
-    # Registra protocolo personalizado letrasbr:// para inicialização com 1 clique do navegador
+    # Registra protocolo personalizado letrasbr://
     register_protocol()
 
-    print("=" * 65)
-    print("  TRADUTOR YOUTUBE MUSIC - SERVIDOR API & OVERLAY FLUTUANTE")
-    print("  Acesse o YouTube Music no navegador com a extensão carregada")
-    print("  Overlay ativo na tela: arraste e use ⚙️ para configurações")
-    print("=" * 65 + "\n")
+    print("=" * 68)
+    print("  LETRASBR TRADUTOR DESKTOP - PYSIDE6 & WINDOWS MEDIA CONTROL (GSMTC)")
+    print("  Detecta YouTube Music e outros players nativamente no Windows!")
+    print("  Use a barra superior para arrastar, miniplayer e ⚙️ para cores/fontes.")
+    print("=" * 68 + "\n")
 
-    # Inicia Uvicorn no thread de background
+    # Inicia Uvicorn em thread de background para clientes móveis e rede local
     def run_server():
-        config = uvicorn.Config(
-            app=app,
-            host="0.0.0.0",
-            port=8000,
-            log_level="warning",
-            access_log=False
-        )
-        server = uvicorn.Server(config)
-        server.run()
+        try:
+            config = uvicorn.Config(
+                app=app,
+                host="0.0.0.0",
+                port=8000,
+                log_level="warning",
+                access_log=False
+            )
+            server = uvicorn.Server(config)
+            server.run()
+        except Exception as e:
+            print(f"[API] Servidor FastAPI em background: {e}")
 
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
+    time.sleep(0.3)
 
-    # Dá um breve instante para o servidor iniciar
-    time.sleep(0.5)
-
-    # Inicia a interface do Overlay no thread principal
     if "--no-overlay" in sys.argv:
         print("[Tradutor] Rodando em modo headless (sem overlay). Pressione Ctrl+C para sair.")
         try:
@@ -59,12 +64,23 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("\n[Tradutor] Servidor finalizado.")
     else:
-        overlay = LyricsOverlay(
-            playback_state=state,
-            on_language_change=change_language_internal,
-            on_player_action=queue_command
-        )
+        from PySide6.QtWidgets import QApplication
+        from overlay_qt import LyricsOverlayQt
+        from media_monitor import WindowsMediaMonitor
+
+        # Inicia aplicação Qt
+        qt_app = QApplication(sys.argv)
+        qt_app.setQuitOnLastWindowClosed(False)  # Permite continuar rodando na bandeja
+
+        # Inicia monitor nativo de mídia do Windows
+        media_monitor = WindowsMediaMonitor()
+        media_monitor.start()
+
+        overlay = LyricsOverlayQt(media_monitor=media_monitor)
+        overlay.show()
+
         try:
-            overlay.run()
-        except KeyboardInterrupt:
-            pass
+            sys.exit(qt_app.exec())
+        finally:
+            media_monitor.stop()
+            media_monitor.wait(1000)

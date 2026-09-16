@@ -2,19 +2,31 @@ import os
 import json
 import threading
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "overlay_config.json")
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "overlay_config.json")
+
+# Garante que a pasta config exista
+os.makedirs(CONFIG_DIR, exist_ok=True)
 
 DEFAULT_CONFIG = {
     "x": 100,
     "y": 100,
     "width": 650,
     "height": 110,
-    "opacity": 0.85,
+    "opacity": 0.88,
+    "bgColor": "#121216",
+    "origColor": "#cbd5e1",
+    "transColor": "#38bdf8",
+    "fontFamily": "Segoe UI",
     "fontSize": 15,
+    "fontBold": True,
+    "fontItalic": False,
     "displayMode": "both",  # "both", "trans", "orig"
     "lang": "pt",           # "pt", "en", "es", "fr"
-    "locked": False
+    "locked": False,
+    "serverUrl": "http://127.0.0.1:8000"
 }
+
 
 _lock = threading.Lock()
 _current_config = DEFAULT_CONFIG.copy()
