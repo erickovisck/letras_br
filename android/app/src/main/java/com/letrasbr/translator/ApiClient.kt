@@ -34,7 +34,9 @@ object ApiClient {
         currentTimeSec: Double,
         durationSec: Double,
         isPaused: Boolean,
-        lang: String = "pt"
+        lang: String = "pt",
+        source: String = "ytmusic",
+        trackId: String? = null
     ): SyncResult? = withContext(Dispatchers.IO) {
         try {
             val url = URL("$baseUrl/api/sync")
@@ -52,6 +54,10 @@ object ApiClient {
                 put("duration", durationSec)
                 put("isPaused", isPaused)
                 put("lang", lang)
+                put("source", source)
+                if (!trackId.isNullOrEmpty()) {
+                    put("trackId", trackId)
+                }
             }
 
             OutputStreamWriter(conn.outputStream).use { it.write(json.toString()) }

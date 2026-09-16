@@ -73,12 +73,17 @@ class MediaListenerService : NotificationListenerService() {
             val componentName = ComponentName(this, MediaListenerService::class.java)
             val controllers = sessionManager.getActiveSessions(componentName)
 
-            // Prioriza o YouTube Music se estiver na lista
-            val ytMusic = controllers.firstOrNull {
-                it.packageName == "com.google.android.apps.youtube.music"
+            // Prioriza players de música suportados (YouTube Music e Spotify)
+            val playingApp = controllers.firstOrNull {
+                it.playbackState?.state == PlaybackState.STATE_PLAYING &&
+                        (it.packageName == "com.google.android.apps.youtube.music" || it.packageName == "com.spotify.music")
             }
 
-            val chosen = ytMusic ?: controllers.firstOrNull()
+            val musicApp = playingApp ?: controllers.firstOrNull {
+                it.packageName == "com.google.android.apps.youtube.music" || it.packageName == "com.spotify.music"
+            } ?: controllers.firstOrNull()
+
+            val chosen = musicApp
 
             if (chosen != null && chosen.packageName != currentController?.packageName) {
                 currentController = chosen
@@ -94,12 +99,10 @@ class MediaListenerService : NotificationListenerService() {
         controller.registerCallback(object : MediaController.Callback() {
             override fun onMetadataChanged(metadata: MediaMetadata?) {
                 super.onMetadataChanged(metadata)
-                // Mudança de faixa
             }
 
             override fun onPlaybackStateChanged(state: PlaybackState?) {
                 super.onPlaybackStateChanged(state)
-                // Atualização de play/pause
             }
         })
     }
@@ -124,7 +127,11 @@ class MediaListenerService : NotificationListenerService() {
                         val isPaused = (playbackState?.state != PlaybackState.STATE_PLAYING)
 
                         if (title.isNotEmpty()) {
-                            val trackKey = "$artist - $title"
+                            val isSpotify = controller.packageName == "com.spotify.music"
+                            val source = if (isSpotify) "spotify" else "ytmusic"
+                            val trackId = metadata?.getString(MediaMetadata.METADATA_KEY_MEDIA_ID)
+
+                            val trackKey = "[$source] $artist - $title"
                             lastTrackKey = trackKey
 
                             val result = ApiClient.syncPlayback(
@@ -133,14 +140,17 @@ class MediaListenerService : NotificationListenerService() {
                                 currentTimeSec = positionMs / 1000.0,
                                 durationSec = durationMs / 1000.0,
                                 isPaused = isPaused,
-                                lang = selectedLang
+                                lang = selectedLang,
+                                source = source,
+                                trackId = trackId
                             )
 
                             if (result != null) {
                                 // Atualiza a janela flutuante se estiver ativa
                                 if (FloatingOverlayService.isRunning) {
+                                    val prefix = if (isSpotify) "🟢 " else "🔴 "
                                     FloatingOverlayService.update(
-                                        title = "$artist - $title",
+                                        title = "$prefix$artist - $title",
                                         original = result.original,
                                         translation = result.translation,
                                         isPaused = isPaused

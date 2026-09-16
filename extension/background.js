@@ -49,4 +49,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   }
+
+  if (message.type === "LETRASBR_CLEAR_PLAYBACK") {
+    fetch("http://localhost:8000/api/playback/clear", { method: "POST" })
+      .then(async (res) => {
+        sendResponse({ success: true });
+      })
+      .catch((err) => {
+        sendResponse({ success: false, error: err.message });
+      });
+    return true;
+  }
 });
