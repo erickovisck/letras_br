@@ -73,10 +73,10 @@ class MainActivity : AppCompatActivity() {
     private fun updateOverlayButtonState() {
         if (FloatingOverlayService.isRunning) {
             btnToggleOverlay.text = "Fechar Janela Flutuante"
-            btnToggleOverlay.setBackgroundColor(getColor(R.color.error_red))
+            btnToggleOverlay.backgroundTintList = androidx.core.content.ContextCompat.getColorStateList(this, R.color.error_red)
         } else {
             btnToggleOverlay.text = "Abrir Janela Flutuante"
-            btnToggleOverlay.setBackgroundColor(getColor(R.color.accent_primary))
+            btnToggleOverlay.backgroundTintList = androidx.core.content.ContextCompat.getColorStateList(this, R.color.accent_primary)
         }
     }
 
