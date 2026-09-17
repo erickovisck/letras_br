@@ -95,7 +95,7 @@ def score_line_match(y_text: str, l_origs: List[str]) -> float:
                     if y_v in l_v or l_v in y_v:
                         best = max(best, 0.90)
                 ratio = difflib.SequenceMatcher(None, y_v, l_v).ratio()
-                if ratio >= 0.70:
+                if ratio >= 0.50:
                     best = max(best, ratio)
 
     # Checa também se alguma parte separada por espaço bate
@@ -258,13 +258,13 @@ def align_lyrics(
     num_vocal = len(vocal_indices)
     num_letras = len(ordered_verses)
 
-    # 2. Busca candidatos a âncoras (score >= 0.70)
+    # 2. Busca candidatos a âncoras (score >= 0.60)
     candidates: List[Tuple[int, int, float]] = []
     for v_idx, y_i in enumerate(vocal_indices):
         y_text = timed_lyrics[y_i].text
         for l_j, l_v in enumerate(ordered_verses):
             sc = score_line_match(y_text, l_v.get("originals", []))
-            if sc >= 0.70:
+            if sc >= 0.60:
                 candidates.append((v_idx, l_j, sc))
 
     # 3. DP Monotônica para encontrar a melhor sequência de âncoras
@@ -366,7 +366,7 @@ def align_lyrics(
             best_sc = 0.0
             for l_v in ordered_verses:
                 sc = score_line_match(timed_lyrics[y_i].text, l_v.get("originals", []))
-                if sc > best_sc and sc >= 0.70:
+                if sc > best_sc and sc >= 0.60:
                     best_sc = sc
                     best_l = l_v["translation"]
             if best_l:
