@@ -8,15 +8,16 @@ e controle nativo de mídia via Windows GSMTC.
 
 import sys
 import os
+import re
 from typing import Optional, List
 
 from PySide6.QtCore import (
     Qt, QPoint, QSize, QRect, QPropertyAnimation, QParallelAnimationGroup,
-    QEasingCurve, Signal, Slot, QTimer, QVariantAnimation
+    QEasingCurve, Signal, Slot, QTimer, QVariantAnimation, QObject, QEvent
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush, QIcon, QAction,
-    QFontDatabase, QCursor, QPixmap
+    QFontDatabase, QCursor, QPixmap, QGuiApplication
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -78,6 +79,97 @@ def format_time_str(seconds: float) -> str:
     m = s // 60
     s = s % 60
     return f"{m:02d}:{s:02d}"
+
+
+class SmartHtmlFilter(QObject):
+    """
+    Filtro de evento para o campo HTML do QColorDialog.
+    Garante que colar codigos hexadecimais (com ou sem '#', com espacos, maiusculos/minusculos)
+    via Ctrl+V, Shift+Insert ou menu de contexto funcione perfeitamente.
+    """
+    def __init__(self, edit, dlg):
+        super().__init__(edit)
+        self.edit = edit
+        self.dlg = dlg
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            is_paste = (
+                (event.modifiers() & Qt.ControlModifier and event.key() == Qt.Key_V) or
+                (event.modifiers() & Qt.ShiftModifier and event.key() == Qt.Key_Insert)
+            )
+            if is_paste:
+                if self._do_paste():
+                    return True
+        elif event.type() == QEvent.ContextMenu:
+            menu = self.edit.createStandardContextMenu()
+            for act in menu.actions():
+                txt = act.text().lower()
+                if "paste" in txt or "colar" in txt:
+                    act.triggered.disconnect()
+                    act.triggered.connect(self._do_paste)
+            menu.exec(event.globalPos())
+            return True
+        return super().eventFilter(obj, event)
+
+    def _do_paste(self):
+        clip = QGuiApplication.clipboard().text().strip()
+        m = re.search(r'#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})', clip)
+        if m:
+            val = m.group(1)
+            if len(val) == 3:
+                val = ''.join([c*2 for c in val])
+            clean_hex = '#' + val.upper()
+            self.edit.setText(clean_hex)
+            self.edit.textEdited.emit(clean_hex)
+            self.dlg.setCurrentColor(QColor(clean_hex))
+            return True
+        return False
+
+
+class HexColorLineEdit(QLineEdit):
+    """
+    Campo de texto para codigos hexadecimais com suporte robusto a colagem
+    (Ctrl+V, Shift+Insert, menu de contexto) mesmo com espacos ou sem '#'.
+    """
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setMaxLength(7)
+        self.setStyleSheet("""
+            QLineEdit {
+                background-color: #212130;
+                color: #f8fafc;
+                border: 1px solid #3f3f5a;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-family: 'Consolas', monospace;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QLineEdit:focus {
+                border-color: #38bdf8;
+            }
+        """)
+
+    def keyPressEvent(self, event):
+        if (event.modifiers() & Qt.ControlModifier and event.key() == Qt.Key_V) or \
+           (event.modifiers() & Qt.ShiftModifier and event.key() == Qt.Key_Insert):
+            self.paste()
+            return
+        super().keyPressEvent(event)
+
+    def paste(self):
+        clip = QGuiApplication.clipboard().text().strip()
+        m = re.search(r'#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})', clip)
+        if m:
+            val = m.group(1)
+            if len(val) == 3:
+                val = ''.join([c*2 for c in val])
+            clean = '#' + val.upper()
+            self.setText(clean)
+            self.textEdited.emit(clean)
+        else:
+            super().paste()
 
 
 class ResizeGripLabel(QLabel):
@@ -459,10 +551,18 @@ class SettingsDialogQt(QDialog):
         h_bg = QHBoxLayout()
         h_bg.addWidget(QLabel("Cor do Fundo:"))
         self.btn_bg_color = QPushButton()
-        self.btn_bg_color.setFixedWidth(70)
+        self.btn_bg_color.setFixedSize(26, 26)
+        self.btn_bg_color.setCursor(Qt.PointingHandCursor)
+        self.btn_bg_color.setToolTip("Clique para abrir a paleta de cores")
+        self.edit_bg_color = HexColorLineEdit(self.cfg.get("bgColor", "#121216").upper())
+        self.edit_bg_color.setFixedWidth(78)
+        self.edit_bg_color.setToolTip("Código hexadecimal (ex: #121216). Cole com Ctrl+V!")
         self._update_color_btn(self.btn_bg_color, self.cfg.get("bgColor", "#121216"))
-        self.btn_bg_color.clicked.connect(lambda: self._choose_color("bgColor", self.btn_bg_color))
+        self.btn_bg_color.clicked.connect(lambda: self._choose_color("bgColor", self.btn_bg_color, self.edit_bg_color))
+        self.edit_bg_color.textEdited.connect(lambda text: self._on_hex_text_edited("bgColor", text, self.btn_bg_color))
         h_bg.addWidget(self.btn_bg_color)
+        h_bg.addWidget(self.edit_bg_color)
+        h_bg.addSpacing(15)
 
         h_bg.addWidget(QLabel("Opacidade:"))
         self.slider_opacity = QSlider(Qt.Horizontal)
@@ -478,17 +578,32 @@ class SettingsDialogQt(QDialog):
         h_text_colors = QHBoxLayout()
         h_text_colors.addWidget(QLabel("Texto Original:"))
         self.btn_orig_color = QPushButton()
-        self.btn_orig_color.setFixedWidth(70)
+        self.btn_orig_color.setFixedSize(26, 26)
+        self.btn_orig_color.setCursor(Qt.PointingHandCursor)
+        self.btn_orig_color.setToolTip("Clique para abrir a paleta de cores")
+        self.edit_orig_color = HexColorLineEdit(self.cfg.get("origColor", "#cbd5e1").upper())
+        self.edit_orig_color.setFixedWidth(78)
+        self.edit_orig_color.setToolTip("Código hexadecimal (ex: #CBD5E1). Cole com Ctrl+V!")
         self._update_color_btn(self.btn_orig_color, self.cfg.get("origColor", "#cbd5e1"))
-        self.btn_orig_color.clicked.connect(lambda: self._choose_color("origColor", self.btn_orig_color))
+        self.btn_orig_color.clicked.connect(lambda: self._choose_color("origColor", self.btn_orig_color, self.edit_orig_color))
+        self.edit_orig_color.textEdited.connect(lambda text: self._on_hex_text_edited("origColor", text, self.btn_orig_color))
         h_text_colors.addWidget(self.btn_orig_color)
+        h_text_colors.addWidget(self.edit_orig_color)
+        h_text_colors.addSpacing(15)
 
         h_text_colors.addWidget(QLabel("Tradução:"))
         self.btn_trans_color = QPushButton()
-        self.btn_trans_color.setFixedWidth(70)
+        self.btn_trans_color.setFixedSize(26, 26)
+        self.btn_trans_color.setCursor(Qt.PointingHandCursor)
+        self.btn_trans_color.setToolTip("Clique para abrir a paleta de cores")
+        self.edit_trans_color = HexColorLineEdit(self.cfg.get("transColor", "#38bdf8").upper())
+        self.edit_trans_color.setFixedWidth(78)
+        self.edit_trans_color.setToolTip("Código hexadecimal (ex: #38BDF8). Cole com Ctrl+V!")
         self._update_color_btn(self.btn_trans_color, self.cfg.get("transColor", "#38bdf8"))
-        self.btn_trans_color.clicked.connect(lambda: self._choose_color("transColor", self.btn_trans_color))
+        self.btn_trans_color.clicked.connect(lambda: self._choose_color("transColor", self.btn_trans_color, self.edit_trans_color))
+        self.edit_trans_color.textEdited.connect(lambda text: self._on_hex_text_edited("transColor", text, self.btn_trans_color))
         h_text_colors.addWidget(self.btn_trans_color)
+        h_text_colors.addWidget(self.edit_trans_color)
         l_colors.addLayout(h_text_colors)
 
         layout.addWidget(box_colors)
@@ -612,16 +727,37 @@ class SettingsDialogQt(QDialog):
         layout.addLayout(h_actions)
 
     def _update_color_btn(self, btn: QPushButton, hex_color: str):
-        btn.setStyleSheet(f"background-color: {hex_color}; border: 1px solid #ffffff; border-radius: 4px;")
-        btn.setText(hex_color.upper())
+        btn.setStyleSheet(f"background-color: {hex_color}; border: 1px solid rgba(255, 255, 255, 0.45); border-radius: 4px;")
+        btn.setText("")
 
-    def _choose_color(self, cfg_key: str, btn: QPushButton):
+    def _on_hex_text_edited(self, cfg_key: str, text: str, btn: QPushButton):
+        clean = text.strip()
+        if not clean.startswith("#"):
+            clean = "#" + clean
+        if re.match(r'^#[A-Fa-f0-9]{6}$', clean):
+            self.cfg[cfg_key] = clean
+            self._update_color_btn(btn, clean)
+
+    def _choose_color(self, cfg_key: str, btn: QPushButton, line_edit: QLineEdit = None):
         initial = QColor(self.cfg.get(cfg_key, "#ffffff"))
-        color = QColorDialog.getColor(initial, self, "Escolher Cor")
-        if color.isValid():
-            hex_c = color.name()
-            self.cfg[cfg_key] = hex_c
-            self._update_color_btn(btn, hex_c)
+        dlg = QColorDialog(initial, self)
+        dlg.setWindowTitle("Escolher Cor")
+
+        # Instala filtro inteligente no campo HTML para permitir colar qualquer formato hex
+        for e in dlg.findChildren(QLineEdit):
+            if e.text().startswith('#'):
+                e.installEventFilter(SmartHtmlFilter(e, dlg))
+
+        if dlg.exec():
+            color = dlg.selectedColor()
+            if color.isValid():
+                hex_c = color.name()
+                self.cfg[cfg_key] = hex_c
+                self._update_color_btn(btn, hex_c)
+                if line_edit:
+                    line_edit.blockSignals(True)
+                    line_edit.setText(hex_c.upper())
+                    line_edit.blockSignals(False)
 
     def _on_theme_changed(self, index):
         theme_name = self.cb_theme.currentText()
@@ -633,9 +769,17 @@ class SettingsDialogQt(QDialog):
             if k in theme_data:
                 self.cfg[k] = theme_data[k]
 
-        self._update_color_btn(self.btn_bg_color, self.cfg.get("bgColor", "#121216"))
-        self._update_color_btn(self.btn_orig_color, self.cfg.get("origColor", "#cbd5e1"))
-        self._update_color_btn(self.btn_trans_color, self.cfg.get("transColor", "#38bdf8"))
+        bg = self.cfg.get("bgColor", "#121216")
+        orig = self.cfg.get("origColor", "#cbd5e1")
+        trans = self.cfg.get("transColor", "#38bdf8")
+
+        self._update_color_btn(self.btn_bg_color, bg)
+        self.edit_bg_color.setText(bg.upper())
+        self._update_color_btn(self.btn_orig_color, orig)
+        self.edit_orig_color.setText(orig.upper())
+        self._update_color_btn(self.btn_trans_color, trans)
+        self.edit_trans_color.setText(trans.upper())
+
         self.slider_opacity.setValue(int(self.cfg.get("opacity", 0.88) * 100))
         self.lbl_opacity_val.setText(f"{self.slider_opacity.value()}%")
         self.cb_font.setCurrentFont(QFont(self.cfg.get("fontFamily", "Segoe UI")))
@@ -710,8 +854,11 @@ class SettingsDialogQt(QDialog):
             self.cfg["fontItalic"] = False
 
         self._update_color_btn(self.btn_bg_color, self.cfg["bgColor"])
+        self.edit_bg_color.setText(self.cfg["bgColor"].upper())
         self._update_color_btn(self.btn_orig_color, self.cfg["origColor"])
+        self.edit_orig_color.setText(self.cfg["origColor"].upper())
         self._update_color_btn(self.btn_trans_color, self.cfg["transColor"])
+        self.edit_trans_color.setText(self.cfg["transColor"].upper())
         self.slider_opacity.setValue(int(self.cfg["opacity"] * 100))
         self.cb_font.setCurrentFont(QFont(self.cfg["fontFamily"]))
         self.slider_font_size.setValue(int(self.cfg["fontSize"]))
