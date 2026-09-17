@@ -32,6 +32,7 @@ class WindowsMediaMonitor(QThread):
     """
     track_changed = Signal(str, str, str, float)  # title, artist, album, duration
     playback_tick = Signal(float, float, bool)     # current_seconds, duration, is_paused
+    source_changed = Signal(str)                  # "spotify", "youtube", "idle"
     status_message = Signal(str)
 
     def __init__(self, parent=None):
@@ -42,6 +43,7 @@ class WindowsMediaMonitor(QThread):
         self._current_session: Optional[MediaSession] = None
         self._last_title = ""
         self._last_artist = ""
+        self._last_source: Optional[str] = None
         self._last_is_paused: Optional[bool] = None
 
         # Fila de comandos assíncronos (play, pause, next, previous)
@@ -127,6 +129,19 @@ class WindowsMediaMonitor(QThread):
                     self._current_session = await self._get_active_session()
 
                 if self._current_session:
+                    # Detecta a origem da reprodução (Spotify vs YouTube Music)
+                    app_id = (getattr(self._current_session, "source_app_user_model_id", "") or "").lower()
+                    if "spotify" in app_id:
+                        src = "spotify"
+                    elif any(k in app_id for k in ("chrome", "edge", "brave", "opera", "firefox", "youtube", "cinhimbnkkghhklpknlkffjgod")):
+                        src = "youtube"
+                    else:
+                        src = "spotify" if "spotify" in app_id else "youtube"
+
+                    if src != self._last_source:
+                        self._last_source = src
+                        self.source_changed.emit(src)
+
                     # Executa comandos pendentes
                     await self._execute_commands(self._current_session)
 
@@ -168,6 +183,10 @@ class WindowsMediaMonitor(QThread):
 
                 else:
                     # Nenhuma sessão ativa no momento
+                    if self._last_source != "idle":
+                        self._last_source = "idle"
+                        self.source_changed.emit("idle")
+
                     if self._last_title != "":
                         self._last_title = ""
                         self._last_artist = ""

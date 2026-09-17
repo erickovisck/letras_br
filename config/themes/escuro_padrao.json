@@ -1,0 +1,12 @@
+{
+  "name": "Escuro (Padrão)",
+  "description": "Tema escuro padrão com destaque em azul ciano",
+  "bgColor": "#121216",
+  "opacity": 0.88,
+  "origColor": "#cbd5e1",
+  "transColor": "#38bdf8",
+  "fontFamily": "Segoe UI",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

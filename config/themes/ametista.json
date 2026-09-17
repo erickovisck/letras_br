@@ -1,0 +1,12 @@
+{
+  "name": "Ametista Roxo",
+  "description": "Visual sofisticado em tons de violeta e lavanda",
+  "bgColor": "#180e29",
+  "opacity": 0.90,
+  "origColor": "#e9d5ff",
+  "transColor": "#c084fc",
+  "fontFamily": "Segoe UI",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

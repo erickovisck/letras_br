@@ -1,0 +1,12 @@
+{
+  "name": "Minimalista Claro",
+  "description": "Fundo claro translúcido ideal para ambientes iluminados",
+  "bgColor": "#f8fafc",
+  "opacity": 0.92,
+  "origColor": "#475569",
+  "transColor": "#0284c7",
+  "fontFamily": "Segoe UI",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

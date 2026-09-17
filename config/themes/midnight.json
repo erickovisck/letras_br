@@ -1,0 +1,12 @@
+{
+  "name": "Midnight Blue",
+  "description": "Azul escuro profundo com letras nítidas",
+  "bgColor": "#0f172a",
+  "opacity": 0.88,
+  "origColor": "#94a3b8",
+  "transColor": "#38bdf8",
+  "fontFamily": "Segoe UI",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

@@ -16,7 +16,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush, QIcon, QAction,
-    QFontDatabase, QCursor
+    QFontDatabase, QCursor, QPixmap
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -30,10 +30,46 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-from config import get_config, save_config, add_config_listener
+from config import get_config, save_config, add_config_listener, get_available_themes, THEMES_DIR
 from aligner import find_active_aligned_line, AlignedLine
 from lyrics_client import LyricsClient
 from media_monitor import WindowsMediaMonitor
+
+
+def load_tinted_icon(icon_name: str, color_hex: str, hover_hex: str = "#ffffff", size: int = 16) -> QIcon:
+    """
+    Carrega imagem da pasta assets e aplica tint de cor preservando a transparência (alpha mask).
+    Retorna QIcon com estados Normal e Active (hover).
+    """
+    assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+    path = os.path.join(assets_dir, icon_name)
+    if not os.path.exists(path):
+        return QIcon()
+
+    pix = QPixmap(path)
+    if pix.isNull():
+        return QIcon()
+
+    qsize = QSize(size, size)
+    scaled = pix.scaled(qsize, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    def _tint(base_pix: QPixmap, color: QColor) -> QPixmap:
+        res = QPixmap(base_pix)
+        p = QPainter(res)
+        p.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        p.fillRect(res.rect(), color)
+        p.end()
+        return res
+
+    norm_pix = _tint(scaled, QColor(color_hex))
+    hover_pix = _tint(scaled, QColor(hover_hex))
+
+    icon = QIcon()
+    icon.addPixmap(norm_pix, QIcon.Normal, QIcon.Off)
+    icon.addPixmap(norm_pix, QIcon.Normal, QIcon.On)
+    icon.addPixmap(hover_pix, QIcon.Active, QIcon.Off)
+    icon.addPixmap(hover_pix, QIcon.Active, QIcon.On)
+    return icon
 
 
 def format_time_str(seconds: float) -> str:
@@ -348,6 +384,50 @@ class SettingsDialogQt(QDialog):
         title.setStyleSheet("font-size: 16px; font-weight: bold; color: #38bdf8; margin-bottom: 6px;")
         layout.addWidget(title)
 
+        # 0. Tema da Interface
+        box_theme = QFrame(self)
+        box_theme.setStyleSheet("QFrame { background-color: #1f1f2e; border-radius: 8px; padding: 10px; }")
+        l_theme = QHBoxLayout(box_theme)
+        l_theme.setSpacing(10)
+
+        lbl_theme = QLabel("🎨 Tema Visual:")
+        lbl_theme.setStyleSheet("font-size: 12px; font-weight: bold; color: #f8fafc;")
+        l_theme.addWidget(lbl_theme)
+
+        self.cb_theme = QComboBox()
+        self.cb_theme.setStyleSheet("""
+            QComboBox {
+                background-color: #27273a;
+                color: #f8fafc;
+                border: 1px solid #3f3f5a;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 12px;
+                min-width: 170px;
+            }
+        """)
+        self.available_themes = get_available_themes()
+        curr_theme = self.cfg.get("theme", "Escuro (Padrão)")
+        for t_name in self.available_themes.keys():
+            self.cb_theme.addItem(t_name)
+
+        idx = self.cb_theme.findText(curr_theme)
+        if idx >= 0:
+            self.cb_theme.setCurrentIndex(idx)
+        else:
+            self.cb_theme.addItem(curr_theme)
+            self.cb_theme.setCurrentText(curr_theme)
+
+        self.cb_theme.currentIndexChanged.connect(self._on_theme_changed)
+        l_theme.addWidget(self.cb_theme, 1)
+
+        lbl_theme_hint = QLabel("📁 config/themes/")
+        lbl_theme_hint.setToolTip("Adicione novos arquivos .json em config/themes/ para carregar temas personalizados!")
+        lbl_theme_hint.setStyleSheet("color: #64748b; font-size: 11px;")
+        l_theme.addWidget(lbl_theme_hint)
+
+        layout.addWidget(box_theme)
+
         # 1. Cores e Fundo
         box_colors = QFrame(self)
         box_colors.setStyleSheet("QFrame { background-color: #1f1f2e; border-radius: 8px; padding: 8px; }")
@@ -522,31 +602,56 @@ class SettingsDialogQt(QDialog):
             self.cfg[cfg_key] = hex_c
             self._update_color_btn(btn, hex_c)
 
+    def _on_theme_changed(self, index):
+        theme_name = self.cb_theme.currentText()
+        theme_data = self.available_themes.get(theme_name)
+        if not theme_data:
+            return
+
+        for k in ["bgColor", "opacity", "origColor", "transColor", "fontFamily", "fontSize", "fontBold", "fontItalic"]:
+            if k in theme_data:
+                self.cfg[k] = theme_data[k]
+
+        self._update_color_btn(self.btn_bg_color, self.cfg.get("bgColor", "#121216"))
+        self._update_color_btn(self.btn_orig_color, self.cfg.get("origColor", "#cbd5e1"))
+        self._update_color_btn(self.btn_trans_color, self.cfg.get("transColor", "#38bdf8"))
+        self.slider_opacity.setValue(int(self.cfg.get("opacity", 0.88) * 100))
+        self.lbl_opacity_val.setText(f"{self.slider_opacity.value()}%")
+        self.cb_font.setCurrentFont(QFont(self.cfg.get("fontFamily", "Segoe UI")))
+        self.slider_font_size.setValue(int(self.cfg.get("fontSize", 15)))
+        self.lbl_font_size_val.setText(f"{int(self.cfg.get('fontSize', 15))} pt")
+        self.chk_bold.setChecked(bool(self.cfg.get("fontBold", True)))
+        self.chk_italic.setChecked(bool(self.cfg.get("fontItalic", False)))
+
     def _restore_defaults(self):
-        self.cfg["bgColor"] = "#121216"
-        self.cfg["opacity"] = 0.88
-        self.cfg["origColor"] = "#cbd5e1"
-        self.cfg["transColor"] = "#38bdf8"
-        self.cfg["fontFamily"] = "Segoe UI"
-        self.cfg["fontSize"] = 15
-        self.cfg["fontBold"] = True
-        self.cfg["fontItalic"] = False
-        self.cfg["displayMode"] = "both"
-        self.cfg["serverUrl"] = "http://127.0.0.1:8000"
+        self.cfg["theme"] = "Escuro (Padrão)"
+        idx = self.cb_theme.findText("Escuro (Padrão)")
+        if idx >= 0:
+            self.cb_theme.setCurrentIndex(idx)
+        else:
+            self.cfg["bgColor"] = "#121216"
+            self.cfg["opacity"] = 0.88
+            self.cfg["origColor"] = "#cbd5e1"
+            self.cfg["transColor"] = "#38bdf8"
+            self.cfg["fontFamily"] = "Segoe UI"
+            self.cfg["fontSize"] = 15
+            self.cfg["fontBold"] = True
+            self.cfg["fontItalic"] = False
 
         self._update_color_btn(self.btn_bg_color, self.cfg["bgColor"])
         self._update_color_btn(self.btn_orig_color, self.cfg["origColor"])
         self._update_color_btn(self.btn_trans_color, self.cfg["transColor"])
-        self.slider_opacity.setValue(88)
-        self.cb_font.setCurrentFont(QFont("Segoe UI"))
-        self.slider_font_size.setValue(15)
-        self.lbl_font_size_val.setText("15 pt")
-        self.chk_bold.setChecked(True)
-        self.chk_italic.setChecked(False)
+        self.slider_opacity.setValue(int(self.cfg["opacity"] * 100))
+        self.cb_font.setCurrentFont(QFont(self.cfg["fontFamily"]))
+        self.slider_font_size.setValue(int(self.cfg["fontSize"]))
+        self.lbl_font_size_val.setText(f"{int(self.cfg['fontSize'])} pt")
+        self.chk_bold.setChecked(self.cfg["fontBold"])
+        self.chk_italic.setChecked(self.cfg["fontItalic"])
         self.cb_mode.setCurrentIndex(0)
-        self.txt_server.setText(self.cfg["serverUrl"])
+        self.txt_server.setText(self.cfg.get("serverUrl", "http://127.0.0.1:8000"))
 
     def _save_and_apply(self):
+        self.cfg["theme"] = self.cb_theme.currentText()
         self.cfg["opacity"] = self.slider_opacity.value() / 100.0
         self.cfg["fontSize"] = self.slider_font_size.value()
         self.cfg["fontFamily"] = self.cb_font.currentFont().family()
@@ -618,6 +723,7 @@ class LyricsOverlayQt(QWidget):
         if self.media_monitor:
             self.media_monitor.track_changed.connect(self._on_track_changed)
             self.media_monitor.playback_tick.connect(self._on_playback_tick)
+            self.media_monitor.source_changed.connect(self._on_source_changed)
 
         # Cria System Tray Icon
         self._init_tray_icon()
@@ -646,24 +752,21 @@ class LyricsOverlayQt(QWidget):
         top_layout.addWidget(self.lbl_grip)
 
         # Miniplayer: Anterior, Play/Pause, Próxima
-        self.btn_prev = QPushButton("⏮", self.top_bar)
+        self.btn_prev = QPushButton(self.top_bar)
         self.btn_prev.setFixedSize(22, 22)
         self.btn_prev.setCursor(Qt.PointingHandCursor)
-        self.btn_prev.setStyleSheet("background: transparent; color: #cbd5e1; border: none; font-size: 11px;")
         self.btn_prev.clicked.connect(lambda: self._send_media_cmd("previous"))
         top_layout.addWidget(self.btn_prev)
 
-        self.btn_play = QPushButton("⏸", self.top_bar)
+        self.btn_play = QPushButton(self.top_bar)
         self.btn_play.setFixedSize(22, 22)
         self.btn_play.setCursor(Qt.PointingHandCursor)
-        self.btn_play.setStyleSheet("background: transparent; color: #38bdf8; border: none; font-size: 11px; font-weight: bold;")
         self.btn_play.clicked.connect(lambda: self._send_media_cmd("play_pause"))
         top_layout.addWidget(self.btn_play)
 
-        self.btn_next = QPushButton("⏭", self.top_bar)
+        self.btn_next = QPushButton(self.top_bar)
         self.btn_next.setFixedSize(22, 22)
         self.btn_next.setCursor(Qt.PointingHandCursor)
-        self.btn_next.setStyleSheet("background: transparent; color: #cbd5e1; border: none; font-size: 11px;")
         self.btn_next.clicked.connect(lambda: self._send_media_cmd("next"))
         top_layout.addWidget(self.btn_next)
 
@@ -675,31 +778,6 @@ class LyricsOverlayQt(QWidget):
         self.timeline_slider.setFixedWidth(100)
         self.timeline_slider.setCursor(Qt.PointingHandCursor)
         self.timeline_slider.setToolTip("Arraste para avançar ou voltar a música")
-        self.timeline_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                height: 4px;
-                background: #334155;
-                border-radius: 2px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #38bdf8;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #f8fafc;
-                width: 10px;
-                margin-top: -3px;
-                margin-bottom: -3px;
-                border-radius: 5px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #38bdf8;
-                width: 12px;
-                margin-top: -4px;
-                margin-bottom: -4px;
-                border-radius: 6px;
-            }
-        """)
 
         self.lbl_time = QLabel("00:00", self.top_bar)
         self.lbl_time.setStyleSheet("font-size: 9px; color: #94a3b8; min-width: 58px;")
@@ -730,37 +808,47 @@ class LyricsOverlayQt(QWidget):
         sep.setStyleSheet("color: #334155;")
         top_layout.addWidget(sep)
 
-        # Status / Faixa atual
-        self.lbl_status = QLabel("Aguardando reprodução no Windows (YouTube Music / Spotify)...", self.top_bar)
+        # Status / Faixa atual com ícone do app no lugar de "Sincronizado"
+        self.status_container = QWidget(self.top_bar)
+        status_layout = QHBoxLayout(self.status_container)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(5)
+
+        self.lbl_source_icon = QLabel(self.status_container)
+        self.lbl_source_icon.setFixedSize(14, 14)
+        self.lbl_source_icon.setScaledContents(True)
+        self.lbl_source_icon.setVisible(False)
+        status_layout.addWidget(self.lbl_source_icon)
+
+        self.lbl_status = QLabel("Aguardando reprodução no Windows (YouTube Music / Spotify)...", self.status_container)
         self.lbl_status.setStyleSheet("font-size: 10px; color: #64748b;")
-        top_layout.addWidget(self.lbl_status, 1)
+        status_layout.addWidget(self.lbl_status, 1)
+
+        top_layout.addWidget(self.status_container, 1)
 
         # Botões de controle da janela (direita)
-        self.btn_lock = QPushButton("🔒" if self.is_locked else "🔓", self.top_bar)
+        self.btn_lock = QPushButton(self.top_bar)
         self.btn_lock.setFixedSize(22, 22)
         self.btn_lock.setCursor(Qt.PointingHandCursor)
-        self.btn_lock.setStyleSheet("background: transparent; border: none; font-size: 10px;")
         self.btn_lock.clicked.connect(self._toggle_lock)
         top_layout.addWidget(self.btn_lock)
 
-        self.btn_settings = QPushButton("⚙", self.top_bar)
+        self.btn_settings = QPushButton(self.top_bar)
         self.btn_settings.setFixedSize(22, 22)
         self.btn_settings.setCursor(Qt.PointingHandCursor)
-        self.btn_settings.setStyleSheet("background: transparent; color: #cbd5e1; border: none; font-size: 12px;")
         self.btn_settings.clicked.connect(self.open_settings)
         top_layout.addWidget(self.btn_settings)
 
         self.btn_minimize = QPushButton("—", self.top_bar)
         self.btn_minimize.setFixedSize(22, 22)
         self.btn_minimize.setCursor(Qt.PointingHandCursor)
-        self.btn_minimize.setStyleSheet("background: transparent; color: #94a3b8; border: none; font-size: 11px; font-weight: bold;")
         self.btn_minimize.clicked.connect(self._toggle_compact)
         top_layout.addWidget(self.btn_minimize)
 
         self.btn_close = QPushButton("✕", self.top_bar)
+        self.btn_close.setObjectName("btn_close")
         self.btn_close.setFixedSize(22, 22)
         self.btn_close.setCursor(Qt.PointingHandCursor)
-        self.btn_close.setStyleSheet("background: transparent; color: #94a3b8; border: none; font-size: 11px;")
         self.btn_close.clicked.connect(self.hide)  # Oculta para o tray
         top_layout.addWidget(self.btn_close)
 
@@ -869,9 +957,118 @@ class LyricsOverlayQt(QWidget):
         """)
         self.lyric_widget.apply_style(self.config)
 
+        accent_color = self.config.get("transColor", "#38bdf8")
+        nav_color = self.config.get("origColor", "#cbd5e1")
+
+        # Scroll / Timeline Seek Slider ultra fino e elegante (2px)
+        self.timeline_slider.setStyleSheet(f"""
+            QSlider {{
+                background: transparent;
+            }}
+            QSlider::groove:horizontal {{
+                height: 2px;
+                background: rgba(148, 163, 184, 0.25);
+                border-radius: 1px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {accent_color};
+                height: 2px;
+                border-radius: 1px;
+            }}
+            QSlider::handle:horizontal {{
+                background: #f8fafc;
+                width: 6px;
+                height: 6px;
+                margin-top: -2px;
+                margin-bottom: -2px;
+                border-radius: 3px;
+            }}
+            QSlider::handle:horizontal:hover {{
+                background: {accent_color};
+                width: 8px;
+                height: 8px;
+                margin-top: -3px;
+                margin-bottom: -3px;
+                border-radius: 4px;
+            }}
+        """)
+
+        btn_base_style = """
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.14);
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 0.24);
+            }
+        """
+        self.btn_prev.setStyleSheet(btn_base_style)
+        self.btn_play.setStyleSheet(btn_base_style)
+        self.btn_next.setStyleSheet(btn_base_style)
+        self.btn_lock.setStyleSheet(btn_base_style)
+        self.btn_settings.setStyleSheet(btn_base_style)
+        self.btn_minimize.setStyleSheet(btn_base_style + "QPushButton { color: #94a3b8; font-size: 11px; font-weight: bold; }")
+        self.btn_close.setStyleSheet(btn_base_style + "QPushButton { color: #94a3b8; font-size: 11px; } QPushButton:hover { background: #ef4444; color: #ffffff; }")
+
+        # Ícones dos botões com tinting de acordo com o tema
+        self._icon_play = load_tinted_icon("play-button.png", accent_color, "#ffffff", 14)
+        self._icon_pause = load_tinted_icon("pause.png", accent_color, "#ffffff", 14)
+        self._icon_prev = load_tinted_icon("back.png", nav_color, "#ffffff", 14)
+        self._icon_next = load_tinted_icon("next.png", nav_color, "#ffffff", 14)
+        self._icon_lock = load_tinted_icon("lock.png", nav_color, "#ffffff", 13)
+        self._icon_unlock = load_tinted_icon("unlock.png", nav_color, "#ffffff", 13)
+        self._icon_settings = load_tinted_icon("settings.png", nav_color, "#ffffff", 13)
+
+        self.btn_prev.setIcon(self._icon_prev)
+        self.btn_prev.setIconSize(QSize(14, 14))
+        self.btn_prev.setToolTip("Voltar música")
+
+        self.btn_next.setIcon(self._icon_next)
+        self.btn_next.setIconSize(QSize(14, 14))
+        self.btn_next.setToolTip("Próxima música")
+
+        self.btn_play.setIcon(self._icon_play if self.is_paused else self._icon_pause)
+        self.btn_play.setIconSize(QSize(14, 14))
+        self.btn_play.setToolTip("Reproduzir" if self.is_paused else "Pausar")
+
+        self.btn_lock.setIcon(self._icon_lock if self.is_locked else self._icon_unlock)
+        self.btn_lock.setIconSize(QSize(13, 13))
+        self.btn_lock.setToolTip("Bloqueado (ignora arrasto)" if self.is_locked else "Desbloqueado (clique para travar)")
+
+        self.btn_settings.setIcon(self._icon_settings)
+        self.btn_settings.setIconSize(QSize(13, 13))
+        self.btn_settings.setToolTip("Configurações e Temas")
+
+    @Slot(str)
+    def _on_source_changed(self, source: str):
+        self._current_source = source
+        self._update_source_icon_display(source)
+
+    def _update_source_icon_display(self, source: str):
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+        if source == "spotify":
+            icon_file = os.path.join(assets_dir, "spotify.png")
+            if os.path.exists(icon_file):
+                self.lbl_source_icon.setPixmap(QPixmap(icon_file).scaled(14, 14, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.lbl_source_icon.setToolTip("Sincronizado via Spotify")
+        elif source == "youtube":
+            icon_file = os.path.join(assets_dir, "youtube.png")
+            if not os.path.exists(icon_file):
+                icon_file = os.path.join(assets_dir, "app.png")
+            if os.path.exists(icon_file):
+                self.lbl_source_icon.setPixmap(QPixmap(icon_file).scaled(14, 14, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.lbl_source_icon.setToolTip("Sincronizado via YouTube Music")
+
     def _toggle_lock(self):
         self.is_locked = not self.is_locked
-        self.btn_lock.setText("🔒" if self.is_locked else "🔓")
+        if hasattr(self, "_icon_lock") and hasattr(self, "_icon_unlock"):
+            self.btn_lock.setIcon(self._icon_lock if self.is_locked else self._icon_unlock)
+        self.btn_lock.setToolTip("Bloqueado (ignora arrasto)" if self.is_locked else "Desbloqueado (clique para travar)")
         self.config["locked"] = self.is_locked
         save_config(self.config)
 
@@ -902,12 +1099,13 @@ class LyricsOverlayQt(QWidget):
         self.aligned_lyrics = []
 
         if not title:
-            self.lbl_status.setText("Nenhuma música tocando no momento.")
+            self.lbl_source_icon.setVisible(False)
+            self.lbl_status.setText("Aguardando reprodução no Windows (YouTube Music / Spotify)...")
             self.lyric_widget.set_texts_instant("Aguardando reprodução no Windows...", "")
             return
 
-        # Feedback visual imediato acordado no Grill-Me (tanto autoplay quanto manual)
-        self.lbl_status.setText(f"🎵 {artist} - {title}")
+        self.lbl_source_icon.setVisible(False)
+        self.lbl_status.setText(f"{artist} - {title}")
         self.lyric_widget.set_texts_animated("Carregando tradução...", f"{artist} - {title}")
 
         lang = self.config.get("lang", "pt")
@@ -928,12 +1126,22 @@ class LyricsOverlayQt(QWidget):
     def _on_lyrics_loaded(self, req_id: int, aligned: List[AlignedLine], trans_url: str):
         self.aligned_lyrics = aligned or []
         if self.aligned_lyrics:
-            self.lbl_status.setText(f"🟢 Sincronizado ({len(self.aligned_lyrics)} versos)")
+            # O ícone do player ativo substitui o antigo texto "🟢 Sincronizado"
+            self._update_source_icon_display(getattr(self, "_current_source", "youtube"))
+            self.lbl_source_icon.setVisible(True)
+            self.lbl_status.setText(f"{self.current_artist} - {self.current_title}")
+            versos = len(self.aligned_lyrics)
+            src_name = "Spotify" if getattr(self, "_current_source", "") == "spotify" else "YouTube Music"
+            tooltip = f"Sincronizado ({versos} versos) via {src_name}"
+            self.lbl_source_icon.setToolTip(tooltip)
+            self.lbl_status.setToolTip(tooltip)
         else:
-            self.lbl_status.setText(f"⚠️ Letra sem sincronização temporal")
+            self.lbl_source_icon.setVisible(False)
+            self.lbl_status.setText(f"⚠️ {self.current_artist} - {self.current_title} (sem sincronização)")
             self.lyric_widget.set_texts_instant("Letra sincronizada não disponível no momento.", "")
 
     def _on_lyrics_error(self, req_id: int, err_msg: str):
+        self.lbl_source_icon.setVisible(False)
         self.lbl_status.setText(f"⚠️ Tradução não encontrada")
         self.lyric_widget.set_texts_instant("Tradução não disponível para esta faixa.", "")
 
@@ -943,11 +1151,12 @@ class LyricsOverlayQt(QWidget):
         self.current_time_seconds = current_seconds
         self.is_paused = is_paused
 
-        # Atualiza ícone do botão play/pause
-        self.btn_play.setText("▶" if is_paused else "⏸")
-        self.btn_play.setStyleSheet(
-            f"background: transparent; color: {'#f8fafc' if is_paused else '#38bdf8'}; border: none; font-size: 11px; font-weight: bold;"
-        )
+        # Atualiza ícone do botão play/pause se o estado mudou
+        if is_paused != getattr(self, "_last_paused_state", None):
+            self._last_paused_state = is_paused
+            if hasattr(self, "_icon_play") and hasattr(self, "_icon_pause"):
+                self.btn_play.setIcon(self._icon_play if is_paused else self._icon_pause)
+                self.btn_play.setToolTip("Reproduzir" if is_paused else "Pausar")
 
         # Atualiza timeline slider e label de tempo
         if not getattr(self, "_is_user_seeking", False):
