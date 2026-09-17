@@ -99,8 +99,8 @@ class LyricsFetchWorker(QThread):
                 simple_title = self.title.split("-")[0].split("(")[0].strip()
                 trans_dict, ordered_verses, trans_url = get_translation(self.artist, simple_title, lang=self.lang)
 
-            # 3. Alinha os versos sincronizados com a tradução
-            aligned = align_lyrics(timed_lyrics, ordered_verses)
+            # 3. Alinha os versos sincronizados com a tradução e registra trechos sem tradução
+            aligned = align_lyrics(timed_lyrics, ordered_verses, title=self.title, artist=self.artist, lang=self.lang)
             self.finished_success.emit(self.request_id, aligned, trans_url or "")
         except Exception as e:
             self.finished_error.emit(self.request_id, str(e))

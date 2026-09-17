@@ -112,13 +112,20 @@ def score_line_match(y_text: str, l_origs: List[str]) -> float:
     return best
 
 
-def align_lyrics(timed_lyrics: List[Any], ordered_verses: List[Dict[str, Any]]) -> List[AlignedLine]:
+def align_lyrics(
+    timed_lyrics: List[Any],
+    ordered_verses: List[Dict[str, Any]],
+    title: str = "",
+    artist: str = "",
+    lang: str = ""
+) -> List[AlignedLine]:
     """
     Realiza o pré-alinhamento global de todos os versos da música no momento da identificação.
     1. Trata trechos instrumentais (♪).
     2. Identifica âncoras cronológicas através de programação dinâmica monotônica.
     3. Repassa todos os versos e preenche lacunas com inteligência (sem duplicar ou sobrescrever
        versos que já possuem tradução completa).
+    4. Registra automaticamente em logs/sem_traducao.log caso haja trechos sem tradução.
     """
     if not timed_lyrics:
         return []
@@ -147,7 +154,14 @@ def align_lyrics(timed_lyrics: List[Any], ordered_verses: List[Dict[str, Any]]) 
                     translation="(tradução indisponível)",
                     is_instrumental=False
                 )
-        return [r for r in result if r is not None]
+        final_list = [r for r in result if r is not None]
+        if title:
+            try:
+                from translation_logger import log_untranslated_lyrics
+                log_untranslated_lyrics(title, artist, lang, final_list)
+            except Exception:
+                pass
+        return final_list
 
     # Linhas vocais do YTM
     vocal_indices = [i for i, line in enumerate(timed_lyrics) if result[i] is None]
@@ -272,7 +286,15 @@ def align_lyrics(timed_lyrics: List[Any], ordered_verses: List[Dict[str, Any]]) 
             is_instrumental=False
         )
 
-    return [r for r in result if r is not None]
+    final_list = [r for r in result if r is not None]
+    if title:
+        try:
+            from translation_logger import log_untranslated_lyrics
+            log_untranslated_lyrics(title, artist, lang, final_list)
+        except Exception:
+            pass
+
+    return final_list
 
 
 def find_active_aligned_line(aligned_lines: List[AlignedLine], current_time_ms: int) -> Optional[AlignedLine]:

@@ -196,7 +196,7 @@ def update_current_track(
 
     # 3. Pré-alinhamento global de todos os versos (atribuição antecipada e preenchimento de lacunas)
     safe_print(f"[{now_str()}] [3/3] ⚙️ Executando pré-alinhamento global e preenchimento de lacunas...")
-    state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses)
+    state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses, title=title, artist=artist, lang=state.lang)
     safe_print(f"[{now_str()}] ✅ {len(state.aligned_lyrics)} versos alinhados e prontos com latência zero!")
 
     safe_print("-" * 70)
@@ -329,7 +329,7 @@ def change_language_internal(new_lang: str):
 
         # 3. Re-alinha os versos
         safe_print(f"[{now_str()}] [2/2] ⚙️ Re-alinhando versos no idioma {new_lang.upper()}...")
-        state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses)
+        state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses, title=state.title, artist=state.artist, lang=new_lang)
         state.last_line_key = None
 
         # Reencontra a linha ativa no tempo atual para atualização imediata
