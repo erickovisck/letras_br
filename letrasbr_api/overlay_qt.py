@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QFrame, QDialog, QFontComboBox, QSpinBox, QSlider, QComboBox,
     QColorDialog, QLineEdit, QCheckBox, QSystemTrayIcon, QMenu,
-    QGraphicsOpacityEffect, QSizeGrip, QMessageBox
+    QGraphicsOpacityEffect, QSizeGrip, QMessageBox, QInputDialog
 )
 
 # Adiciona diretório ao path
@@ -30,7 +30,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-from config import get_config, save_config, add_config_listener, get_available_themes, THEMES_DIR
+from config import get_config, save_config, add_config_listener, get_available_themes, save_custom_theme, THEMES_DIR
 from aligner import find_active_aligned_line, AlignedLine
 from lyrics_client import LyricsClient
 from media_monitor import WindowsMediaMonitor
@@ -421,8 +421,29 @@ class SettingsDialogQt(QDialog):
         self.cb_theme.currentIndexChanged.connect(self._on_theme_changed)
         l_theme.addWidget(self.cb_theme, 1)
 
+        self.btn_save_theme = QPushButton("💾 Salvar como Novo Tema")
+        self.btn_save_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_save_theme.setStyleSheet("""
+            QPushButton {
+                background-color: #27273a;
+                color: #38bdf8;
+                border: 1px solid #38bdf8;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #38bdf8;
+                color: #0f172a;
+            }
+        """)
+        self.btn_save_theme.setToolTip("Salva a configuração atual de cores, fonte e estilo como um novo tema em config/themes/")
+        self.btn_save_theme.clicked.connect(self._save_new_theme)
+        l_theme.addWidget(self.btn_save_theme)
+
         lbl_theme_hint = QLabel("📁 config/themes/")
-        lbl_theme_hint.setToolTip("Adicione novos arquivos .json em config/themes/ para carregar temas personalizados!")
+        lbl_theme_hint.setToolTip("Pasta onde os temas (.json) ficam armazenados")
         lbl_theme_hint.setStyleSheet("color: #64748b; font-size: 11px;")
         l_theme.addWidget(lbl_theme_hint)
 
@@ -622,6 +643,56 @@ class SettingsDialogQt(QDialog):
         self.lbl_font_size_val.setText(f"{int(self.cfg.get('fontSize', 15))} pt")
         self.chk_bold.setChecked(bool(self.cfg.get("fontBold", True)))
         self.chk_italic.setChecked(bool(self.cfg.get("fontItalic", False)))
+
+    def _save_new_theme(self):
+        name, ok = QInputDialog.getText(
+            self,
+            "Salvar Novo Tema",
+            "Digite o nome do novo tema:",
+            QLineEdit.Normal,
+            ""
+        )
+        if not ok or not name.strip():
+            return
+
+        clean_name = name.strip()
+        theme_data = {
+            "bgColor": self.cfg.get("bgColor", "#121216"),
+            "opacity": round(self.slider_opacity.value() / 100.0, 2),
+            "origColor": self.cfg.get("origColor", "#cbd5e1"),
+            "transColor": self.cfg.get("transColor", "#38bdf8"),
+            "fontFamily": self.cb_font.currentFont().family(),
+            "fontSize": self.slider_font_size.value(),
+            "fontBold": self.chk_bold.isChecked(),
+            "fontItalic": self.chk_italic.isChecked()
+        }
+
+        try:
+            saved_path = save_custom_theme(clean_name, theme_data)
+            self.available_themes = get_available_themes()
+
+            self.cb_theme.blockSignals(True)
+            self.cb_theme.clear()
+            for t_name in self.available_themes.keys():
+                self.cb_theme.addItem(t_name)
+
+            idx = self.cb_theme.findText(clean_name)
+            if idx >= 0:
+                self.cb_theme.setCurrentIndex(idx)
+            self.cb_theme.blockSignals(False)
+
+            self.cfg["theme"] = clean_name
+            QMessageBox.information(
+                self,
+                "Tema Salvo",
+                f"Tema '{clean_name}' salvo com sucesso!\n\nArquivo salvo em:\n{saved_path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Erro ao Salvar Tema",
+                f"Ocorreu um erro ao salvar o tema:\n{e}"
+            )
 
     def _restore_defaults(self):
         self.cfg["theme"] = "Escuro (Padrão)"

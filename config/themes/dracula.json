@@ -1,12 +1,12 @@
 {
   "name": "Drácula",
-  "description": "Paleta Drácula com fundo escuro e acentos em roxo pastel",
+  "description": "Paleta Drácula com fundo escuro, acento roxo e tipografia literária serifada",
   "bgColor": "#282a36",
-  "opacity": 0.90,
+  "opacity": 0.9,
   "origColor": "#f8f8f2",
   "transColor": "#bd93f9",
-  "fontFamily": "Segoe UI",
+  "fontFamily": "Georgia",
   "fontSize": 15,
   "fontBold": true,
-  "fontItalic": false
+  "fontItalic": true
 }

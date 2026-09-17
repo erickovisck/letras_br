@@ -1,0 +1,12 @@
+{
+  "name": "Modo Claro",
+  "description": "Tema claro inverso ao escuro padrao com tipografia Segoe UI",
+  "bgColor": "#ffffff",
+  "opacity": 0.88,
+  "origColor": "#334155",
+  "transColor": "#0284c7",
+  "fontFamily": "Segoe UI",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

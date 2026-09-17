@@ -1,11 +1,11 @@
 {
   "name": "Spotify Verde",
-  "description": "Visual moderno inspirado no Spotify com verde vibrante",
+  "description": "Visual moderno inspirado no Spotify com tipografia geométrica encorpada",
   "bgColor": "#121212",
-  "opacity": 0.90,
+  "opacity": 0.9,
   "origColor": "#b3b3b3",
   "transColor": "#1db954",
-  "fontFamily": "Segoe UI",
+  "fontFamily": "Bahnschrift",
   "fontSize": 15,
   "fontBold": true,
   "fontItalic": false

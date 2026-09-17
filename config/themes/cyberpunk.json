@@ -1,12 +1,12 @@
 {
   "name": "Cyberpunk Neon",
-  "description": "Estilo futurista com alto contraste, ciano e neon rosa",
+  "description": "Estilo futurista com alto contraste, ciano, neon rosa e tipografia digital",
   "bgColor": "#0b0c10",
   "opacity": 0.92,
   "origColor": "#66fcf1",
   "transColor": "#ff007f",
-  "fontFamily": "Segoe UI",
-  "fontSize": 15,
+  "fontFamily": "Cascadia Code",
+  "fontSize": 14,
   "fontBold": true,
   "fontItalic": false
 }
