@@ -1,8 +1,8 @@
 {
-  "x": 138,
-  "y": 804,
-  "width": 647,
-  "height": 105,
+  "x": 14,
+  "y": 888,
+  "width": 804,
+  "height": 173,
   "opacity": 0.88,
   "bgColor": "#121216",
   "origColor": "#cbd5e1",
@@ -11,7 +11,7 @@
   "fontSize": 15,
   "fontBold": true,
   "fontItalic": false,
-  "displayMode": "orig",
+  "displayMode": "both",
   "lang": "pt",
   "locked": false,
   "serverUrl": "http://127.0.0.1:8000"

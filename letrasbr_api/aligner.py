@@ -111,6 +111,93 @@ def score_line_match(y_text: str, l_origs: List[str]) -> float:
 
     return best
 
+def _smart_assign_gap(
+    mid_y_indices: List[int],
+    mid_l_indices: List[int],
+    timed_lyrics: List[Any],
+    vocal_indices: List[int],
+    ordered_verses: List[Dict[str, Any]],
+    assigned_L: Dict[int, List[str]]
+):
+    """
+    Distribui de forma inteligente e segura os versos do Letras (mid_l_indices)
+    entre as linhas vocais do YTM (mid_y_indices) dentro de uma lacuna.
+    - Se num_y > num_l (mais linhas no YTM, ex: ad-libs como 'Oh my God'),
+      combina as linhas usando DP de similaridade, deixando os ad-libs com score ~0
+      sem tradução para não 'roubar' a tradução de versos legítimos vizinhos.
+    - Se não houver match claro ou se num_l >= num_y, mantém a distribuição
+      proporcional conservadora para nunca quebrar músicas com transliterações diferentes.
+    """
+    num_y = len(mid_y_indices)
+    num_l = len(mid_l_indices)
+    if num_l == 0 or num_y == 0:
+        return
+
+    # Pareamento direto 1:1 se as quantidades forem idênticas
+    if num_y == num_l:
+        for k in range(num_y):
+            assigned_L[mid_y_indices[k]].append(ordered_verses[mid_l_indices[k]]["translation"])
+        return
+
+    # Mais versos no Letras do que linhas no YTM (num_l > num_y)
+    if num_l > num_y:
+        for k, lj in enumerate(mid_l_indices):
+            target_y = mid_y_indices[min(int(k * num_y / num_l), num_y - 1)]
+            assigned_L[target_y].append(ordered_verses[lj]["translation"])
+        return
+
+    # Mais linhas no YTM do que versos no Letras (num_y > num_l):
+    # Cenário de falas extras, exclamações e ad-libs (ex: 'Oh my God')
+    matrix = []
+    has_any_good_match = False
+    for lj in mid_l_indices:
+        row = []
+        l_origs = ordered_verses[lj].get("originals", [])
+        for yi in mid_y_indices:
+            y_text = timed_lyrics[vocal_indices[yi]].text
+            sc = score_line_match(y_text, l_origs)
+            if sc >= 0.30:
+                has_any_good_match = True
+            row.append(sc)
+        matrix.append(row)
+
+    # Se nenhum verso tiver score >= 0.30, faz distribuição proporcional conservadora
+    if not has_any_good_match:
+        for k, lj in enumerate(mid_l_indices):
+            target_y = mid_y_indices[min(int(k * num_y / num_l), num_y - 1)]
+            assigned_L[target_y].append(ordered_verses[lj]["translation"])
+        return
+
+    # Com matches inteligentes, alinha monotonicamente maximizando a pontuação
+    memo = {}
+
+    def solve(l_idx, y_start):
+        if l_idx == num_l:
+            return 0.0, []
+        if y_start >= num_y:
+            return -1e9, []
+        key = (l_idx, y_start)
+        if key in memo:
+            return memo[key]
+
+        # Opção 1: pular y_start (y_start fica livre e sem tradução)
+        best_val, best_path = solve(l_idx, y_start + 1)
+
+        # Opção 2: casar verso l_idx com linha y_start
+        sc = matrix[l_idx][y_start]
+        bonus = sc if sc > 0 else 0.001
+        val_match, path_match = solve(l_idx + 1, y_start + 1)
+        if val_match + bonus > best_val:
+            best_val = val_match + bonus
+            best_path = [(l_idx, y_start)] + path_match
+
+        memo[key] = (best_val, best_path)
+        return memo[key]
+
+    _, best_path = solve(0, 0)
+    for l_idx, y_idx in best_path:
+        assigned_L[mid_y_indices[y_idx]].append(ordered_verses[mid_l_indices[l_idx]]["translation"])
+
 
 def align_lyrics(
     timed_lyrics: List[Any],
@@ -206,21 +293,31 @@ def align_lyrics(
         curr = prev[curr]
     anchors.reverse()
 
-    # 4. REPASSE E DISTRIBUIÇÃO DAS LACUNAS (TOPOLOGIA PURA)
+    # 4. REPASSE E DISTRIBUIÇÃO DAS LACUNAS (ALINHAMENTO INTELIGENTE)
     assigned_L: Dict[int, List[str]] = {v_i: [] for v_i in range(num_vocal)}
 
     if not anchors:
-        # Se nenhuma âncora textual foi encontrada, distribui proporcionalmente
-        for v_i in range(num_vocal):
-            l_idx = min(int(v_i * num_letras / num_vocal), num_letras - 1)
-            assigned_L[v_i].append(ordered_verses[l_idx]["translation"])
+        # Se nenhuma âncora textual foi encontrada, usa alinhamento inteligente global
+        _smart_assign_gap(
+            list(range(num_vocal)),
+            list(range(num_letras)),
+            timed_lyrics,
+            vocal_indices,
+            ordered_verses,
+            assigned_L
+        )
     else:
         # 4.1 Lacuna antes da primeira âncora
         first_y, first_l = anchors[0]
-        if first_l > 0:
-            for lj in range(0, first_l):
-                target_y = min(lj, first_y) if first_y > 0 else 0
-                assigned_L[target_y].append(ordered_verses[lj]["translation"])
+        if first_y > 0 and first_l > 0:
+            _smart_assign_gap(
+                list(range(0, first_y)),
+                list(range(0, first_l)),
+                timed_lyrics,
+                vocal_indices,
+                ordered_verses,
+                assigned_L
+            )
 
         # 4.2 Entre âncoras consecutivas
         for a_idx in range(len(anchors)):
@@ -229,29 +326,38 @@ def align_lyrics(
 
             if a_idx + 1 < len(anchors):
                 next_y, next_l = anchors[a_idx + 1]
-                mid_l_range = range(curr_l + 1, next_l)
-                mid_y_range = range(curr_y + 1, next_y)
+                mid_l = list(range(curr_l + 1, next_l))
+                mid_y = list(range(curr_y + 1, next_y))
 
-                if mid_l_range:
-                    if mid_y_range:
-                        # Há linhas vocais intermediárias no YTM: distribui os versos entre elas
-                        for k, lj in enumerate(mid_l_range):
-                            target_y = curr_y + 1 + (k % len(mid_y_range))
-                            assigned_L[target_y].append(ordered_verses[lj]["translation"])
+                if mid_l:
+                    if mid_y:
+                        _smart_assign_gap(
+                            mid_y,
+                            mid_l,
+                            timed_lyrics,
+                            vocal_indices,
+                            ordered_verses,
+                            assigned_L
+                        )
                     else:
                         # Mesma linha ou linhas YTM adjacentes: os versos pertencem à linha atual
-                        for lj in mid_l_range:
+                        for lj in mid_l:
                             assigned_L[curr_y].append(ordered_verses[lj]["translation"])
 
         # 4.3 Lacuna após a última âncora
         last_y, last_l = anchors[-1]
-        if last_l + 1 < num_letras:
+        if last_y + 1 < num_vocal and last_l + 1 < num_letras:
+            _smart_assign_gap(
+                list(range(last_y + 1, num_vocal)),
+                list(range(last_l + 1, num_letras)),
+                timed_lyrics,
+                vocal_indices,
+                ordered_verses,
+                assigned_L
+            )
+        elif last_l + 1 < num_letras:
             for lj in range(last_l + 1, num_letras):
-                if last_y + 1 < num_vocal:
-                    target_y = min(last_y + 1 + (lj - last_l - 1), num_vocal - 1)
-                    assigned_L[target_y].append(ordered_verses[lj]["translation"])
-                else:
-                    assigned_L[last_y].append(ordered_verses[lj]["translation"])
+                assigned_L[last_y].append(ordered_verses[lj]["translation"])
 
     # 4.4 Fallback inteligente para versos que ficaram sem tradução (ex: refrões repetidos)
     for v_idx, y_i in enumerate(vocal_indices):
