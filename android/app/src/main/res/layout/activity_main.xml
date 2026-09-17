@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg_dark"
-    android:padding="20dp">
+    android:padding="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -24,10 +24,10 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Tradução de músicas em tempo real para YouTube Music"
+            android:text="Tradução e sincronização em tempo real para Android"
             android:textColor="@color/text_secondary"
             android:textSize="13sp"
-            android:layout_marginBottom="20dp" />
+            android:layout_marginBottom="16dp" />
 
         <!-- Card de Status e Permissões -->
         <LinearLayout
@@ -47,22 +47,22 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Permissão de Notificações / Mídia -->
+            <!-- Permissão de Mídia -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:layout_marginBottom="12dp">
+                android:layout_marginBottom="10dp">
 
                 <TextView
                     android:id="@+id/tv_perm_media"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="1. Leitura de Mídia (YT Music)"
+                    android:text="1. Leitura de Mídia (YT Music/Spotify)"
                     android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_grant_media"
@@ -73,7 +73,7 @@
                     app:cornerRadius="8dp" />
             </LinearLayout>
 
-            <!-- Permissão de Janela Flutuante (Overlay) -->
+            <!-- Permissão de Janela Flutuante -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -87,7 +87,7 @@
                     android:layout_weight="1"
                     android:text="2. Janela Flutuante (Overlay)"
                     android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_grant_overlay"
@@ -158,7 +158,8 @@
             android:layout_height="wrap_content"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -229,6 +230,359 @@
                     android:text="FR"
                     android:textColor="@color/text_primary" />
             </RadioGroup>
+        </LinearLayout>
+
+        <!-- CARD DE PERSONALIZAÇÃO VISUAL & ESTILO (ESTILO DESKTOP) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎨 Personalização Visual &amp; Estilo"
+                android:textColor="@color/accent_blue"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Personalize cores, transparência, fontes e modo de exibição como no desktop."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:layout_marginBottom="12dp" />
+
+            <!-- PRÉ-VISUALIZAÇÃO AO VIVO (LIVE PREVIEW) -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Pré-visualização em Tempo Real:"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <LinearLayout
+                android:id="@+id/preview_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:id="@+id/preview_header"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="⠿  ⏸  ⏭  The Weeknd - Blinding Lights"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp"
+                    android:paddingBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/preview_orig"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="I said, ooh, I'm blinded by the lights"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:gravity="center"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="2dp" />
+
+                <TextView
+                    android:id="@+id/preview_trans"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Eu disse, ooh, estou cego pelas luzes"
+                    android:textColor="@color/accent_blue"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="4dp" />
+            </LinearLayout>
+
+            <!-- 1. COR DO FUNDO & OPACIDADE -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Fundo &amp; Transparência"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <View
+                    android:id="@+id/view_bg_color_indicator"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="8dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_pick_bg_color"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Escolher Cor do Fundo"
+                    android:textSize="12sp"
+                    android:backgroundTint="@color/card_stroke"
+                    app:cornerRadius="6dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:id="@+id/tv_opacity_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Opacidade: 88%"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:minWidth="100dp" />
+
+                <SeekBar
+                    android:id="@+id/sb_opacity"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="100"
+                    android:progress="88" />
+            </LinearLayout>
+
+            <!-- 2. CORES DO TEXTO -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2. Cores dos Textos"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="6dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <!-- Botão Tradução -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginEnd="6dp">
+
+                    <View
+                        android:id="@+id/view_trans_color_indicator"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="6dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_pick_trans_color"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Tradução"
+                        android:textSize="11sp"
+                        android:backgroundTint="@color/card_stroke"
+                        app:cornerRadius="6dp" />
+                </LinearLayout>
+
+                <!-- Botão Original -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginStart="6dp">
+
+                    <View
+                        android:id="@+id/view_orig_color_indicator"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="6dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_pick_orig_color"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Original"
+                        android:textSize="11sp"
+                        android:backgroundTint="@color/card_stroke"
+                        app:cornerRadius="6dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 3. TAMANHO DA FONTE (CONTROLE DIVIDIDO ERGONÔMICO) -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3. Tamanho da Fonte"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="6dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_font_dec"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:text="−"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="@color/card_stroke"
+                    app:cornerRadius="8dp" />
+
+                <TextView
+                    android:id="@+id/tv_font_size_val"
+                    android:layout_width="70dp"
+                    android:layout_height="wrap_content"
+                    android:text="15 sp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:gravity="center" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_font_inc"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:text="+"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="@color/card_stroke"
+                    app:cornerRadius="8dp" />
+
+                <SeekBar
+                    android:id="@+id/sb_font_size"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="20"
+                    android:progress="5" />
+            </LinearLayout>
+
+            <!-- 4. TIPOGRAFIA & ESTILOS -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4. Família da Fonte &amp; Formatação"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="6dp" />
+
+            <Spinner
+                android:id="@+id/sp_font_family"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_card"
+                android:layout_marginBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <CheckBox
+                    android:id="@+id/cb_font_bold"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Negrito (Bold)"
+                    android:textColor="@color/text_primary"
+                    android:checked="true"
+                    android:layout_marginEnd="16dp" />
+
+                <CheckBox
+                    android:id="@+id/cb_font_italic"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Itálico (Italic)"
+                    android:textColor="@color/text_primary" />
+            </LinearLayout>
+
+            <!-- 5. MODO DE EXIBIÇÃO -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="5. Modo de Exibição dos Versos"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="6dp" />
+
+            <RadioGroup
+                android:id="@+id/rg_display_mode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="12dp">
+
+                <RadioButton
+                    android:id="@+id/rb_mode_both"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Ambos (Original + Tradução)"
+                    android:textColor="@color/text_primary"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/rb_mode_trans"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Apenas Tradução"
+                    android:textColor="@color/text_primary" />
+
+                <RadioButton
+                    android:id="@+id/rb_mode_orig"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Apenas Original"
+                    android:textColor="@color/text_primary" />
+            </RadioGroup>
+
+            <!-- BOTÃO RESTAURAR PADRÕES -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_reset_styles"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Restaurar Estilos Padrão"
+                android:textSize="12sp"
+                android:backgroundTint="@color/card_stroke"
+                app:cornerRadius="8dp" />
         </LinearLayout>
 
     </LinearLayout>
