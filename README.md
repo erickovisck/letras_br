@@ -1,6 +1,6 @@
 <div align="right">
   <a href="README.md"><img src="https://img.shields.io/badge/Language-English-blue?style=for-the-badge&logo=readme&logoColor=white" alt="English"></a>
-  <a href="README.pt-BR.md"><img src="https://img.shields.io/badge/Língua-Português-green?style=for-the-badge&logo=readme&logoColor=white" alt="Português"></a>
+  <a href="README.pt-BR.md"><img src="https://img.shields.io/badge/Idioma-Português-green?style=for-the-badge&logo=readme&logoColor=white" alt="Português"></a>
 </div>
 
 # LetrasBR - Real-time Synced Lyrics & Translation
