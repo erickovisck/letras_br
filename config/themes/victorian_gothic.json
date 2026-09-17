@@ -1,0 +1,12 @@
+{
+  "name": "Victorian Gothic",
+  "description": "Tema personalizado criado pelo usuário",
+  "bgColor": "#0d0302",
+  "opacity": 0.92,
+  "origColor": "#591233",
+  "transColor": "#6f3041",
+  "fontFamily": "Cascadia Code",
+  "fontSize": 14,
+  "fontBold": true,
+  "fontItalic": false
+}
