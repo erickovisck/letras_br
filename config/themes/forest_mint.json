@@ -1,0 +1,12 @@
+{
+  "name": "Forest Mint",
+  "description": "Tons análogos botânicos com fundo musgo escuro e leitura suave em menta e lima",
+  "bgColor": "#0b1411",
+  "opacity": 0.9,
+  "origColor": "#d1fae5",
+  "transColor": "#34d399",
+  "fontFamily": "Fira Code",
+  "fontSize": 14,
+  "fontBold": true,
+  "fontItalic": false
+}

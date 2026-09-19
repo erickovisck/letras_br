@@ -1,0 +1,12 @@
+{
+  "name": "Nordic Frost",
+  "description": "Gradiente monocromático frio e minimalista em tons de gelo e safira clara",
+  "bgColor": "#111827",
+  "opacity": 0.85,
+  "origColor": "#f0fdfa",
+  "transColor": "#67e8f9",
+  "fontFamily": "Poppins",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

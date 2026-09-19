@@ -1,0 +1,12 @@
+{
+  "name": "Solar Flare",
+  "description": "Complementar dinâmico com base índigo e destaque de letra em dourado solar e tangerina",
+  "bgColor": "#0f172a",
+  "opacity": 0.9,
+  "origColor": "#fde047",
+  "transColor": "#fb923c",
+  "fontFamily": "Montserrat",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}

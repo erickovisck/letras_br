@@ -1,5 +1,6 @@
 import re
 import json
+import difflib
 import unicodedata
 import requests
 from bs4 import BeautifulSoup
@@ -110,8 +111,8 @@ def split_multilingual(text: str) -> List[str]:
     candidates: List[str] = []
     text_clean = clean_song_title(text)
 
-    # 1. Separadores comuns: ' - ', ' / ', '|', '×', ',', '&', ' feat. ', ' ft. '
-    parts = re.split(r'\s*(?:[-/|×,&]|(?:\b(?:feat|ft|part)\.?\b))\s*', text)
+    # 1. Separadores comuns: ' - ', ' / ', '|', '×', ',', '&', ' feat. ', ' ft. ', ' e ', ' and '
+    parts = re.split(r'\s*(?:[-/|×,&]|(?:\b(?:feat|ft|part|and|e)\.?\b))\s*', text, flags=re.IGNORECASE)
     latin_parts = [clean_song_title(p.strip()) for p in parts if is_latin(p) and not is_non_latin(p)]
     non_latin_parts = [clean_song_title(p.strip()) for p in parts if is_non_latin(p)]
 
@@ -149,7 +150,11 @@ def split_multilingual(text: str) -> List[str]:
     return candidates
 
 
-def search_letras_fallback(query: str, expected_titles: Optional[List[str]] = None) -> Optional[str]:
+def search_letras_fallback(
+    query: str,
+    expected_titles: Optional[List[str]] = None,
+    expected_artists: Optional[List[str]] = None
+) -> Optional[str]:
     """Busca direta no mecanismo de busca Solr (JSONP) do Letras.mus.br com validação do resultado."""
     try:
         log(f"Consultando busca do Letras.mus.br para: '{query}'...")
@@ -175,23 +180,57 @@ def search_letras_fallback(query: str, expected_titles: Optional[List[str]] = No
                 exp_raws = [clean_song_title(t).lower() for t in expected_titles if t]
 
                 for doc in song_docs:
+                    if expected_artists:
+                        doc_art = doc.get("art", "").lower()
+                        doc_dns = doc.get("dns", "").lower()
+                        art_matched = False
+                        for ea in expected_artists:
+                            ea_clean = clean_song_title(ea).lower()
+                            ea_slug = slugify(ea)
+                            if (ea_clean and (ea_clean in doc_art or doc_art in ea_clean)) or (ea_slug and (ea_slug in doc_dns or doc_dns in ea_slug)):
+                                art_matched = True
+                                break
+                        if not art_matched:
+                            continue
+
                     doc_title = doc.get("txt", "")
-                    cleaned_doc_title = clean_song_title(doc_title)
-                    doc_slug = slugify(cleaned_doc_title)
                     doc_url = doc.get("url", "").lower()
-                    doc_lower = cleaned_doc_title.lower()
+                    doc_cands = [doc_title, clean_song_title(doc_title)] + split_multilingual(doc_title)
+                    doc_slugs = [slugify(c) for c in doc_cands if c]
+                    doc_lowers = [c.lower() for c in doc_cands if c]
 
+                    matched = False
                     for es in exp_slugs:
-                        if es and (es == doc_slug or es in doc_url or doc_slug in es):
-                            found_path = f"/{doc.get('dns')}/{doc.get('url')}"
-                            log(f"Busca encontrou correspondência validada: {found_path} ('{doc_title}' por '{doc.get('art')}')")
-                            return found_path
+                        if not es:
+                            continue
+                        for ds in doc_slugs:
+                            if es == ds or es in ds or ds in es:
+                                matched = True
+                                break
+                            if len(es) >= 6 and len(ds) >= 6:
+                                if es.replace('ou', 'o') == ds.replace('ou', 'o') or difflib.SequenceMatcher(None, es.replace('ou', 'o'), ds.replace('ou', 'o')).ratio() >= 0.85:
+                                    matched = True
+                                    break
+                        if es in doc_url or doc_url.endswith(f"/{es}") or (len(es) >= 6 and es.replace('ou', 'o') in doc_url.replace('ou', 'o')):
+                            matched = True
+                        if matched:
+                            break
 
-                    for er in exp_raws:
-                        if er and (er in doc_lower or doc_lower in er):
-                            found_path = f"/{doc.get('dns')}/{doc.get('url')}"
-                            log(f"Busca encontrou correspondência validada por texto: {found_path} ('{doc_title}' por '{doc.get('art')}')")
-                            return found_path
+                    if not matched:
+                        for er in exp_raws:
+                            if not er:
+                                continue
+                            for dl in doc_lowers:
+                                if er == dl or er in dl or dl in er:
+                                    matched = True
+                                    break
+                            if matched:
+                                break
+
+                    if matched:
+                        found_path = f"/{doc.get('dns')}/{doc.get('url')}"
+                        log(f"Busca encontrou correspondência validada: {found_path} ('{doc_title}' por '{doc.get('art')}')")
+                        return found_path
 
                 log(f"Nenhum resultado da busca correspondeu aos títulos esperados: {expected_titles}")
                 return None
@@ -238,17 +277,28 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
                     cleaned_t = clean_song_title(t_cand)
                     title_slug = slugify(cleaned_t)
 
-                    # Busca por title exato ou título limpo nos links
+                    # Busca por title exato ou variações multilíngues nos links
                     for a_tag in links:
                         tag_title = a_tag.get("title") or a_tag.get_text()
                         if not tag_title:
                             continue
-                        cleaned_tag = clean_song_title(tag_title)
-                        if cleaned_tag.lower() == cleaned_t.lower() or slugify(cleaned_tag) == title_slug:
-                            log(f"Encontrado link por título limpo: {a_tag['href']} ('{tag_title}')")
-                            return a_tag["href"]
-                        if a_tag["href"].rstrip("/").endswith(f"/{title_slug}"):
-                            log(f"Encontrado link por sufixo de slug: {a_tag['href']}")
+                        tag_cands = [tag_title, clean_song_title(tag_title)] + split_multilingual(tag_title)
+                        tag_slugs = [slugify(c) for c in tag_cands if c]
+                        tag_lowers = [c.lower() for c in tag_cands if c]
+                        href_lower = a_tag["href"].lower()
+
+                        matched = False
+                        if cleaned_t.lower() in tag_lowers or title_slug in tag_slugs:
+                            matched = True
+                        elif any(len(title_slug) >= 6 and len(ts) >= 6 and title_slug.replace('ou', 'o') == ts.replace('ou', 'o') for ts in tag_slugs):
+                            matched = True
+                        elif href_lower.rstrip("/").endswith(f"/{title_slug}"):
+                            matched = True
+                        elif len(title_slug) >= 6 and title_slug.replace('ou', 'o') in href_lower.replace('ou', 'o'):
+                            matched = True
+
+                        if matched:
+                            log(f"Encontrado link por correspondência: {a_tag['href']} ('{tag_title}')")
                             return a_tag["href"]
         except Exception as e:
             log(f"Erro ao acessar {artist_url}: {e}")
@@ -261,9 +311,9 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
             if path:
                 return path
 
-    # 3. Tentativa com o título validado contra os candidatos de música (evita músicas aleatórias)
+    # 3. Tentativa com o título validado contra os candidatos de música e artista (evita músicas aleatórias)
     for t_cand in title_candidates:
-        path = search_letras_fallback(t_cand, expected_titles=title_candidates)
+        path = search_letras_fallback(t_cand, expected_titles=title_candidates, expected_artists=artist_candidates)
         if path:
             return path
 

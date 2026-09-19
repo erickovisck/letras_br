@@ -47,6 +47,12 @@ def get_variants(text: str) -> List[str]:
     if furigana_exp and furigana_exp not in vars_list:
         vars_list.append(furigana_exp)
 
+    # Conversão nativa Katakana -> Hiragana (sem dependências)
+    base_for_kana = furigana_exp or text
+    kata_to_hira = "".join(chr(ord(c) - 0x60) if 0x30A1 <= ord(c) <= 0x30F6 else c for c in base_for_kana)
+    if kata_to_hira and kata_to_hira not in vars_list:
+        vars_list.append(kata_to_hira)
+
     if _kks:
         try:
             conv = _kks.convert(furigana_exp or text)
@@ -67,6 +73,7 @@ COMMON_LYRIC_READINGS = {
     "飛翔いたら": ["はばたいたら", "habataitara"],
     "飛翔いて": ["はばたいて", "habataite"],
     "共鳴けて": ["ひびかせて", "hibikasete"],
+    "今日は": ["きょうは", "kyou wa", "kyouwa"],
 }
 
 
@@ -139,15 +146,7 @@ def _smart_assign_gap(
             assigned_L[mid_y_indices[k]].append(ordered_verses[mid_l_indices[k]]["translation"])
         return
 
-    # Mais versos no Letras do que linhas no YTM (num_l > num_y)
-    if num_l > num_y:
-        for k, lj in enumerate(mid_l_indices):
-            target_y = mid_y_indices[min(int(k * num_y / num_l), num_y - 1)]
-            assigned_L[target_y].append(ordered_verses[lj]["translation"])
-        return
-
-    # Mais linhas no YTM do que versos no Letras (num_y > num_l):
-    # Cenário de falas extras, exclamações e ad-libs (ex: 'Oh my God')
+    # Constrói matriz de similaridade entre versos do Letras e linhas do YTM na lacuna
     matrix = []
     has_any_good_match = False
     for lj in mid_l_indices:
@@ -161,10 +160,65 @@ def _smart_assign_gap(
             row.append(sc)
         matrix.append(row)
 
-    # Se nenhum verso tiver score >= 0.30, faz distribuição proporcional conservadora
+    # Mais versos no Letras do que linhas no YTM (num_l > num_y)
+    # Linhas longas do YTM podem agrupar múltiplos versos curtos do Letras
+    if num_l > num_y:
+        if has_any_good_match:
+            memo = {}
+
+            def solve_more_l(l_idx, y_curr):
+                if l_idx == num_l:
+                    if y_curr == num_y - 1:
+                        return 0.0, []
+                    return -1e9, []
+                if (num_l - l_idx) < (num_y - 1 - y_curr):
+                    return -1e9, []
+                key = (l_idx, y_curr)
+                if key in memo:
+                    return memo[key]
+
+                sc = matrix[l_idx][y_curr]
+                bonus = sc if sc > 0 else 0.001
+
+                # Opção 1: continuar na mesma linha YTM
+                v1, p1 = solve_more_l(l_idx + 1, y_curr)
+                val1 = v1 + bonus
+
+                # Opção 2: avançar para a próxima linha YTM
+                val2 = -1e9
+                p2 = []
+                if y_curr + 1 < num_y:
+                    v2, p2 = solve_more_l(l_idx + 1, y_curr + 1)
+                    val2 = v2 + bonus
+
+                if val2 >= val1:
+                    best_val = val2
+                    best_path = [(l_idx, y_curr)] + p2
+                else:
+                    best_val = val1
+                    best_path = [(l_idx, y_curr)] + p1
+
+                memo[key] = (best_val, best_path)
+                return memo[key]
+
+            val, best_path = solve_more_l(0, 0)
+            if best_path and val > -1e8:
+                for l_idx, y_idx in best_path:
+                    assigned_L[mid_y_indices[y_idx]].append(ordered_verses[mid_l_indices[l_idx]]["translation"])
+                return
+
+        # Distribuição balanceada central caso não haja match textual seguro
+        for k, lj in enumerate(mid_l_indices):
+            target_y = mid_y_indices[min(int((k + 0.5) * num_y / num_l), num_y - 1)]
+            assigned_L[target_y].append(ordered_verses[lj]["translation"])
+        return
+
+    # Mais linhas no YTM do que versos no Letras (num_y > num_l):
+    # Cenário de falas extras, exclamações e ad-libs (ex: 'Oh my God')
+    # Se nenhum verso tiver score >= 0.30, faz distribuição balanceada conservadora
     if not has_any_good_match:
         for k, lj in enumerate(mid_l_indices):
-            target_y = mid_y_indices[min(int(k * num_y / num_l), num_y - 1)]
+            target_y = mid_y_indices[min(int((k + 0.5) * num_y / num_l), num_y - 1)]
             assigned_L[target_y].append(ordered_verses[lj]["translation"])
         return
 

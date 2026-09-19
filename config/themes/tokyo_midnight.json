@@ -1,0 +1,12 @@
+{
+  "name": "Tokyo Midnight",
+  "description": "Tríade fria e vibrante com roxo profundo, azul céu e detalhes em coral pastel",
+  "bgColor": "#100e17",
+  "opacity": 0.88,
+  "origColor": "#38bdf8",
+  "transColor": "#fb7185",
+  "fontFamily": "Inter",
+  "fontSize": 15,
+  "fontBold": false,
+  "fontItalic": false
+}

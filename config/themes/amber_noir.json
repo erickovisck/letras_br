@@ -1,0 +1,12 @@
+{
+  "name": "Amber Noir",
+  "description": "Harmonia análoga quente inspirada em monitores retrô e iluminação âmbar",
+  "bgColor": "#14110f",
+  "opacity": 0.9,
+  "origColor": "#ffe8d6",
+  "transColor": "#f59e0b",
+  "fontFamily": "Segoe UI",
+  "fontSize": 15,
+  "fontBold": true,
+  "fontItalic": false
+}
