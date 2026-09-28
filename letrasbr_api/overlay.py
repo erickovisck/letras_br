@@ -356,13 +356,22 @@ class LyricsOverlay:
         self.root.geometry(f"{w}x{h}+{x}+{y}")
         self.root.attributes("-alpha", opacity)
 
-        self.lbl_original.configure(
-            font=("Segoe UI", font_size),
-            wraplength=w - 24
-        )
+        if display_mode == "orig":
+            self.lbl_original.configure(
+                font=("Segoe UI", int(font_size * 1.15), "bold"),
+                wraplength=w - 24,
+                fg=self.config.get("transColor", "#38bdf8")
+            )
+        else:
+            self.lbl_original.configure(
+                font=("Segoe UI", font_size),
+                wraplength=w - 24,
+                fg=self.config.get("origColor", "#cbd5e1")
+            )
         self.lbl_translation.configure(
             font=("Segoe UI", int(font_size * 1.15), "bold"),
-            wraplength=w - 24
+            wraplength=w - 24,
+            fg=self.config.get("transColor", "#38bdf8")
         )
 
         self.btn_lock.configure(text="🔒" if locked else "🔓", fg="#ef4444" if locked else "#94a3b8")

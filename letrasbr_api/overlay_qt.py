@@ -310,14 +310,20 @@ class LyricContainerWidget(QWidget):
         trans_hex = self._config.get("transColor", "#38bdf8")
         display_mode = self._config.get("displayMode", "both")
 
-        font_orig = QFont(font_family, max(9, int(font_size * 0.9)))
-        font_orig.setItalic(is_italic)
+        if display_mode == "orig":
+            font_orig = QFont(font_family, max(10, int(font_size * 1.15)))
+            font_orig.setBold(is_bold)
+            font_orig.setItalic(is_italic)
+            c_orig = QColor(trans_hex)
+        else:
+            font_orig = QFont(font_family, max(9, int(font_size * 0.9)))
+            font_orig.setItalic(is_italic)
+            c_orig = QColor(orig_hex)
 
         font_trans = QFont(font_family, max(10, int(font_size * 1.15)))
         font_trans.setBold(is_bold)
         font_trans.setItalic(is_italic)
 
-        c_orig = QColor(orig_hex)
         c_trans = QColor(trans_hex)
 
         def draw_verse(orig_text: str, trans_text: str, center_y: float, scale: float, alpha: float):
@@ -334,7 +340,10 @@ class LyricContainerWidget(QWidget):
 
             # Aplica opacidade diretamente na cor do pincel (sem QGraphicsOpacityEffect)
             color_o = QColor(c_orig)
-            color_o.setAlphaF(max(0.0, min(1.0, alpha * 0.85)))
+            if display_mode == "orig":
+                color_o.setAlphaF(max(0.0, min(1.0, alpha)))
+            else:
+                color_o.setAlphaF(max(0.0, min(1.0, alpha * 0.85)))
 
             color_t = QColor(c_trans)
             color_t.setAlphaF(max(0.0, min(1.0, alpha)))
