@@ -10,6 +10,12 @@ __pycache__/
 *.log
 !logs/sem_traducao.log
 scratch/
+logs/*.json
+scripts/*.json
+
+# User local config & agent work
+config/overlay_config.json
+.agents/
 
 # IDE files
 .vscode/
