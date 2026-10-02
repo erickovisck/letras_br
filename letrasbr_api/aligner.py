@@ -146,6 +146,15 @@ def _smart_assign_gap(
             assigned_L[mid_y_indices[k]].append(ordered_verses[mid_l_indices[k]]["translation"])
         return
 
+    # Proteção contra explosão de complexidade na DP recursiva
+    # Para gaps muito grandes sem âncoras, usa distribuição balanceada direta
+    _dp_complexity = num_l * num_y
+    if _dp_complexity > 400:
+        for k, lj in enumerate(mid_l_indices):
+            target_y = mid_y_indices[min(int((k + 0.5) * num_y / num_l), num_y - 1)]
+            assigned_L[target_y].append(ordered_verses[lj]["translation"])
+        return
+
     # Constrói matriz de similaridade entre versos do Letras e linhas do YTM na lacuna
     matrix = []
     has_any_good_match = False
@@ -292,7 +301,7 @@ def align_lyrics(
                     start_time=line.start_time,
                     end_time=line.end_time,
                     original=line.text,
-                    translation="(tradução indisponível)",
+                    translation="(sem tradução)",
                     is_instrumental=False
                 )
         final_list = [r for r in result if r is not None]
@@ -436,7 +445,7 @@ def align_lyrics(
             if not dedup_l or dedup_l[-1] != item:
                 dedup_l.append(item)
 
-        trans_str = " / ".join(dedup_l) if dedup_l else "(sem tradução para este verso)"
+        trans_str = " / ".join(dedup_l) if dedup_l else "♪"
 
         result[y_i] = AlignedLine(
             start_time=line.start_time,

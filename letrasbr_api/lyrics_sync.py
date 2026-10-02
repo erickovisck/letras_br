@@ -2,8 +2,18 @@ import sys
 import os
 from typing import List, Optional
 
-from ytmusicapi import YTMusic
-from ytmusicapi.models.lyrics import LyricLine
+try:
+    from ytmusicapi import YTMusic
+    try:
+        from ytmusicapi.models.lyrics import LyricLine
+    except ImportError:
+        LyricLine = None  # ytmusicapi antigo sem modelo LyricLine
+    _YTMUSICAPI_AVAILABLE = True
+except ImportError as _ytm_err:
+    YTMusic = None
+    LyricLine = None
+    _YTMUSICAPI_AVAILABLE = False
+    print(f"[YTM] AVISO: ytmusicapi nao instalado: {_ytm_err}")
 
 
 def log(msg: str):
@@ -16,16 +26,27 @@ def log(msg: str):
 
 class YTMManager:
     def __init__(self):
-        log("Inicializando cliente YTMusic...")
-        self.yt = YTMusic()
-        log("Cliente YTMusic inicializado com sucesso.")
+        self._available = False
+        self.yt = None
+        try:
+            log("Inicializando cliente YTMusic...")
+            self.yt = YTMusic()
+            self._available = True
+            log("Cliente YTMusic inicializado com sucesso.")
+        except Exception as e:
+            log(f"AVISO: Nao foi possivel inicializar YTMusic: {e}")
+            log("Letras sincronizadas do YouTube Music nao estarao disponiveis.")
 
-    def get_timed_lyrics(self, video_id: str, title: Optional[str] = None, artist: Optional[str] = None) -> Optional[List[LyricLine]]:
+    def get_timed_lyrics(self, video_id: str, title: Optional[str] = None, artist: Optional[str] = None) -> Optional[List]:
         """
         Obtém as letras temporizadas do YouTube Music usando ytmusicapi.
         Se o videoId direto não tiver letras, tenta buscar pelo título e artista
         para pegar a versão oficial da faixa de áudio.
         """
+        if not self._available:
+            log("ytmusicapi indisponivel — retornando None.")
+            return None
+
         lyrics_browse_id = None
 
         if video_id:
@@ -73,7 +94,7 @@ class YTMManager:
             return None
 
 
-def find_active_line(lines: List[LyricLine], current_time_ms: int) -> Optional[LyricLine]:
+def find_active_line(lines: List, current_time_ms: int) -> Optional[object]:
     """
     Localiza a linha ativa com base no timestamp atual em milissegundos.
     """

@@ -28,6 +28,9 @@ from scraper import get_translation, clean_song_title
 from aligner import align_lyrics, find_active_aligned_line, AlignedLine
 from config import get_config, save_config
 from providers import ProviderFactory, TrackInfo, TimedLine
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+_lyrics_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="lyrics_fetch")
 
 app = FastAPI(title="LetrasBR Tradutor API (Universal)", version="2.1.0")
 
@@ -97,6 +100,8 @@ class PlaybackState:
         self.is_paused: bool = False
         self.current_seconds: float = 0.0
         self.duration_seconds: float = 0.0
+        self.is_fetching: bool = False
+        self.fetch_generation: int = 0  # Incrementa a cada nova faixa para cancelar fetches anteriores
 
 
 state = PlaybackState()
@@ -129,7 +134,7 @@ def safe_print(*args, **kwargs):
         print(*cleaned_args, **kwargs)
 
 
-def update_current_track(
+def _do_fetch_lyrics_sync(
     title: str,
     artist: str,
     track_id: Optional[str],
@@ -138,30 +143,12 @@ def update_current_track(
     album: Optional[str] = None,
     duration: Optional[float] = None
 ):
-    if lang:
-        state.lang = lang.lower().strip()
-
-    state.title = title
-    state.artist = artist
-    state.album = album
-    state.track_id = track_id
-    state.video_id = track_id  # Mantém compatibilidade com clientes que consultam videoId
-    state.source = source
-    state.last_line_key = None
-    state.aligned_lyrics = []
-
+    # Estado já foi resetado atomicamente por _reset_state_for_new_track antes desta thread iniciar.
+    # Aqui apenas executamos a busca de letras (operação potencialmente lenta).
     provider = ProviderFactory.get_provider(source)
+    active_lang = state.lang
 
-    song_id = f"{provider.provider_id}|||{artist.strip()}|||{title.strip()}"
-    if track_id:
-        song_id += f"|||{track_id.strip()}"
-    state.song_key = f"{song_id}|||{state.lang.strip()}"
-
-    safe_print("\n" + "=" * 70)
-    safe_print(f"[{now_str()}] 🎵 NOVA FAIXA DETECTADA [{provider.provider_id.upper()}]: {artist} - {title}")
-    if track_id:
-        safe_print(f"[{now_str()}] 🔗 Track ID: {track_id}")
-    safe_print(f"[{now_str()}] 🌐 Idioma selecionado: {state.lang.upper()}")
+    safe_print(f"[{now_str()}] 🌐 Idioma: {active_lang.upper()} | Track ID: {track_id or 'n/a'}")
     safe_print("=" * 70)
 
     # 1. Busca letras sincronizadas através do Provider Adapter
@@ -203,8 +190,68 @@ def update_current_track(
     safe_print(f"[{now_str()}] ⏳ Sincronização ao vivo ativada. Aguardando reprodução...\n")
 
 
+def _reset_state_for_new_track(
+    title: str, artist: str, track_id: Optional[str],
+    lang: Optional[str], source: str, album: Optional[str],
+    duration: Optional[float]
+):
+    """Reseta o estado imediatamente quando uma nova faixa é detectada (sem bloquear)."""
+    if lang:
+        state.lang = lang.lower().strip()
+    state.title = title
+    state.artist = artist
+    state.album = album
+    state.track_id = track_id
+    state.video_id = track_id
+    state.source = source
+    state.last_line_key = None
+    state.aligned_lyrics = []
+    state.timed_lyrics = []
+    state.ordered_verses = []
+    state.translation_dict = {}
+    state.translation_url = None
+    state.active_original = ""
+    state.active_translation = ""
+    state.is_fetching = True
+    state.fetch_generation += 1
+
+    provider = ProviderFactory.get_provider(source)
+    song_id = f"{provider.provider_id}|||{artist.strip()}|||{title.strip()}"
+    if track_id:
+        song_id += f"|||{track_id.strip()}"
+    state.song_key = f"{song_id}|||{state.lang.strip()}"
+
+    safe_print("\n" + "=" * 70)
+    safe_print(f"[{now_str()}] NOVA FAIXA [{provider.provider_id.upper()}]: {artist} - {title}")
+    safe_print(f"[{now_str()}] Buscando letras em background... (não bloqueante)")
+    safe_print("=" * 70)
+
+
+async def _fetch_lyrics_background(
+    title: str, artist: str, track_id: Optional[str],
+    lang: str, source: str, album: Optional[str],
+    duration: Optional[float], generation: int
+):
+    """Executa a busca de letras em thread separada sem bloquear o event loop."""
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(
+            _lyrics_executor,
+            lambda: _do_fetch_lyrics_sync(
+                title, artist, track_id, lang, source, album, duration
+            )
+        )
+    except Exception as e:
+        safe_print(f"[{now_str()}] ERRO no fetch de letras em background: {e}")
+    finally:
+        # Só marca como concluído se ainda somos a geração atual
+        if state.fetch_generation == generation:
+            state.is_fetching = False
+            safe_print(f"[{now_str()}] Letras carregadas! {len(state.aligned_lyrics)} versos alinhados.")
+
+
 @app.post("/api/sync")
-def sync_playback(payload: SyncPayload, request: Request):
+async def sync_playback(payload: SyncPayload, request: Request):
     effective_track_id = payload.trackId or payload.videoId
     effective_source = payload.source or "ytmusic"
     provider = ProviderFactory.get_provider(effective_source)
@@ -217,9 +264,9 @@ def sync_playback(payload: SyncPayload, request: Request):
     new_key = f"{song_id}|||{active_lang}"
     is_new_song = (new_key != state.song_key)
 
-    # Mudança de faixa
+    # Mudança de faixa — reseta imediatamente e busca em background
     if is_new_song:
-        update_current_track(
+        _reset_state_for_new_track(
             title=payload.title,
             artist=payload.artist,
             track_id=effective_track_id,
@@ -228,6 +275,17 @@ def sync_playback(payload: SyncPayload, request: Request):
             album=payload.album,
             duration=payload.duration
         )
+        # Inicia busca não-bloqueante
+        asyncio.create_task(_fetch_lyrics_background(
+            title=payload.title,
+            artist=payload.artist,
+            track_id=effective_track_id,
+            lang=active_lang,
+            source=effective_source,
+            album=payload.album,
+            duration=payload.duration,
+            generation=state.fetch_generation
+        ))
 
     # Atualiza o timestamp atual e estado do player
     current_ms = int(payload.currentTime * 1000)
@@ -248,6 +306,21 @@ def sync_playback(payload: SyncPayload, request: Request):
             "artist": state.artist,
             "lang": state.lang,
             "source": provider.provider_id
+        }
+        if pending_cmd:
+            res["command"] = pending_cmd
+        return res
+
+    # Se ainda buscando letras, retorna status de carregando
+    if state.is_fetching and not state.aligned_lyrics:
+        res = {
+            "status": "loading",
+            "title": state.title,
+            "artist": state.artist,
+            "lang": state.lang,
+            "source": provider.provider_id,
+            "activeOriginal": state.title,
+            "activeTranslation": "Buscando letras...",
         }
         if pending_cmd:
             res["command"] = pending_cmd

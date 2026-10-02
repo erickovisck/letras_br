@@ -29,7 +29,7 @@ class LyricsFetchWorker(QThread):
     finished_success = Signal(int, list, str)  # request_id, aligned_lyrics, trans_url
     finished_error = Signal(int, str)          # request_id, error_message
 
-    def __init__(self, request_id: int, title: str, artist: str, album: str, duration: float, lang: str, server_url: str):
+    def __init__(self, request_id: int, title: str, artist: str, album: str, duration: float, lang: str, server_url: str, track_id: Optional[str] = None):
         super().__init__()
         self.request_id = request_id
         self.title = title
@@ -38,6 +38,7 @@ class LyricsFetchWorker(QThread):
         self.duration = duration
         self.lang = lang
         self.server_url = (server_url or "").rstrip("/")
+        self.track_id = track_id
 
     def run(self):
         # Se um servidor remoto (diferente de localhost/127.0.0.1) estiver configurado, usa a API REST
@@ -84,7 +85,7 @@ class LyricsFetchWorker(QThread):
                 title=self.title,
                 artist=self.artist,
                 album=self.album,
-                track_id=None,
+                track_id=self.track_id,  # Usa track_id real quando disponível
                 duration=self.duration,
                 source="ytmusic"
             )
@@ -132,7 +133,8 @@ class LyricsClient:
         lang: str,
         server_url: str,
         on_success,
-        on_error
+        on_error,
+        track_id: Optional[str] = None
     ) -> int:
         """
         Inicia a busca assíncrona. Cancela qualquer busca anterior em andamento.
@@ -162,7 +164,8 @@ class LyricsClient:
             album=album,
             duration=duration,
             lang=lang,
-            server_url=server_url
+            server_url=server_url,
+            track_id=track_id
         )
 
         def _handle_success(worker_req_id, aligned, trans_url):

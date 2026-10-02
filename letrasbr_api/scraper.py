@@ -2,14 +2,72 @@ import re
 import json
 import difflib
 import unicodedata
-import requests
-from bs4 import BeautifulSoup
+import urllib.parse
+import threading
 from typing import Dict, List, Tuple, Optional, Any
+import httpx
+from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.letras.mus.br"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
 }
+
+_client: Optional[httpx.Client] = None
+_client_lock = threading.Lock()
+
+# Cache em memória para evitar re-scraping da mesma música (LRU simples)
+_translation_cache: Dict[str, Tuple] = {}
+_translation_cache_lock = threading.Lock()
+_MAX_CACHE_SIZE = 60
+
+
+def get_client() -> httpx.Client:
+    """Retorna cliente HTTP persistente mantendo cookies e sessao para evitar bloqueios WAF (403)."""
+    global _client
+    with _client_lock:
+        if _client is None or _client.is_closed:
+            _client = httpx.Client(
+                headers=HEADERS,
+                follow_redirects=True,
+                timeout=10.0
+            )
+            try:
+                # Aquecimento de cookies (sgroup, countryCode)
+                _client.get(BASE_URL, timeout=5.0)
+            except Exception:
+                pass
+        return _client
+
+
+def fetch_response(url: str, timeout: float = 8.0) -> Optional[httpx.Response]:
+    """Executa requisicao GET com renovacao automatica de sessao em caso de 403."""
+    client = get_client()
+    try:
+        res = client.get(url, timeout=timeout)
+        if res.status_code == 403:
+            log(f"Status 403 ao acessar {url}. Tentando renovar cookies da sessao...")
+            with _client_lock:
+                try:
+                    client.get(BASE_URL, timeout=5.0)
+                except Exception:
+                    pass
+            res = client.get(url, timeout=timeout)
+        return res
+    except Exception as e:
+        log(f"Erro na requisicao para {url}: {e}")
+        return None
+
 
 
 def log(msg: str):
@@ -158,9 +216,9 @@ def search_letras_fallback(
     """Busca direta no mecanismo de busca Solr (JSONP) do Letras.mus.br com validação do resultado."""
     try:
         log(f"Consultando busca do Letras.mus.br para: '{query}'...")
-        url = f"https://solr.sscdn.co/letras/m1/?q={requests.utils.quote(query)}"
-        res = requests.get(url, headers=HEADERS, timeout=6)
-        if res.status_code == 200:
+        url = f"https://solr.sscdn.co/letras/m1/?q={urllib.parse.quote(query)}"
+        res = fetch_response(url, timeout=6.0)
+        if res and res.status_code == 200:
             match = re.search(r'LetrasSug\((.*)\)', res.text, re.DOTALL)
             if match:
                 data = json.loads(match.group(1))
@@ -268,8 +326,8 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
         log(f"Verificando página do artista: {artist_url}")
 
         try:
-            res = requests.get(artist_url, headers=HEADERS, timeout=6)
-            if res.status_code == 200:
+            res = fetch_response(artist_url, timeout=6.0)
+            if res and res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 links = soup.find_all("a", href=True)
 
@@ -348,6 +406,13 @@ def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict
       - ordered_verses: [{"index": 0, "translation": "...", "originals": [...]}, ...]
       - translation_url: URL da página de tradução encontrada
     """
+    # Verifica cache primeiro
+    _cache_key = f"{artist.lower().strip()}|||{song_name.lower().strip()}|||{lang.lower().strip()}"
+    with _translation_cache_lock:
+        if _cache_key in _translation_cache:
+            log(f"[CACHE] Hit para '{song_name}' ({lang.upper()}) — pulando scraping.")
+            return _translation_cache[_cache_key]
+
     song_path = get_song_url(artist, song_name)
     if not song_path:
         log(f"Música '{song_name}' de '{artist}' NÃO encontrada no Letras.mus.br.")
@@ -364,17 +429,19 @@ def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict
     ordered_verses: List[Dict[str, Any]] = []
 
     try:
-        res = requests.get(url_translation, headers=HEADERS, timeout=6)
-        log(f"Status da página de tradução: {res.status_code}")
+        res = fetch_response(url_translation, timeout=8.0)
+        status_code = res.status_code if res else 0
+        log(f"Status da página de tradução: {status_code}")
         # Se o idioma alternativo (ex: francês ou espanhol) não existir para esta música, tenta fallback para PT
-        if res.status_code != 200 and suffix != "traducao.html":
-            log(f"Idioma '{lang}' não disponível (HTTP {res.status_code}). Tentando fallback para PT (traducao.html)...")
+        if status_code != 200 and suffix != "traducao.html":
+            log(f"Idioma '{lang}' não disponível (HTTP {status_code}). Tentando fallback para PT (traducao.html)...")
             url_translation = f"{BASE_URL}{song_path}traducao.html"
-            res = requests.get(url_translation, headers=HEADERS, timeout=6)
-            log(f"Status do fallback PT: {res.status_code}")
+            res = fetch_response(url_translation, timeout=8.0)
+            status_code = res.status_code if res else 0
+            log(f"Status do fallback PT: {status_code}")
 
-        if res.status_code != 200:
-            log(f"Página de tradução retornou {res.status_code}.")
+        if not res or status_code != 200:
+            log(f"Página de tradução retornou {status_code}.")
             return {}, [], url_translation
 
         soup = BeautifulSoup(res.text, "html.parser")
@@ -453,5 +520,11 @@ def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict
 
     except Exception as e:
         log(f"Erro ao extrair tradução de {url_translation}: {e}")
+
+    # Salva no cache (mesmo se vazio, para não tentar de novo na mesma sessão)
+    with _translation_cache_lock:
+        if len(_translation_cache) >= _MAX_CACHE_SIZE:
+            _translation_cache.pop(next(iter(_translation_cache)))
+        _translation_cache[_cache_key] = (lyrics_dict, ordered_verses, url_translation)
 
     return lyrics_dict, ordered_verses, url_translation
