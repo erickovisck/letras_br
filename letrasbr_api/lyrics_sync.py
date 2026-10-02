@@ -60,7 +60,16 @@ class YTMManager:
 
         # Se não encontrou letras no video_id fornecido e temos título e artista, tenta buscar a música oficial
         if not lyrics_browse_id and title:
-            query = f"{title} {artist or ''}".strip()
+            try:
+                from scraper import clean_song_title
+                cleaned = clean_song_title(title)
+            except Exception:
+                try:
+                    from letrasbr_api.scraper import clean_song_title
+                    cleaned = clean_song_title(title)
+                except Exception:
+                    cleaned = title
+            query = f"{cleaned or title} {artist or ''}".strip()
             log(f"Tentando busca alternativa no YouTube Music para: '{query}'...")
             try:
                 search_results = self.yt.search(query, filter="songs")

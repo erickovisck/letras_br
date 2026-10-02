@@ -23,8 +23,11 @@ def is_instrumental(text: str) -> bool:
     """Verifica se a linha é apenas instrumental / notas musicais (♪, ♫, etc.) ou vazia."""
     if not text:
         return True
-    cleaned = re.sub(r"[\s\(\)\[\]\u2669-\u266f\u266a♫♪♩♬~〜\-–—.]+", "", text)
-    return len(cleaned) == 0
+    cleaned = re.sub(r"[\s\(\)\[\]\u2669-\u266f\u266a♫♪♩♬~〜\-–—.]+", "", text).strip().lower()
+    return len(cleaned) == 0 or cleaned in (
+        "instrumental", "solo", "sóinstrumental", "soinstrumental",
+        "soloinstrumental", "instrumentalsolo"
+    )
 
 
 def normalize(text: str) -> str:
@@ -36,6 +39,10 @@ def normalize(text: str) -> str:
     return re.sub(r"[\s\u3000]+", " ", text).strip()
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=4096)
 def get_variants(text: str) -> List[str]:
     """Gera variações de leitura (original, furigana expandido, hiragana, romaji)."""
     vars_list = [text]
@@ -77,6 +84,7 @@ COMMON_LYRIC_READINGS = {
 }
 
 
+@lru_cache(maxsize=4096)
 def expand_lyric_variants(text: str) -> List[str]:
     """Expande variações textuais incluindo sinônimos fonéticos conhecidos."""
     variants = get_variants(text)
@@ -94,26 +102,41 @@ def score_line_match(y_text: str, l_origs: List[str]) -> float:
 
     best = 0.0
     for y_v in y_vars:
+        len_y = len(y_v)
         for l_orig in l_origs:
             for l_v in expand_lyric_variants(l_orig):
                 if y_v == l_v:
                     return 1.0
-                if len(y_v) >= 4 and len(l_v) >= 4:
+                len_l = len(l_v)
+                if len_y >= 4 and len_l >= 4:
                     if y_v in l_v or l_v in y_v:
                         best = max(best, 0.90)
-                ratio = difflib.SequenceMatcher(None, y_v, l_v).ratio()
+                        continue
+                max_l = max(len_y, len_l)
+                if max_l > 0 and abs(len_y - len_l) / max_l > 0.5:
+                    continue
+                sm = difflib.SequenceMatcher(None, y_v, l_v)
+                if sm.real_quick_ratio() < 0.50 or sm.quick_ratio() < 0.50:
+                    continue
+                ratio = sm.ratio()
                 if ratio >= 0.50:
                     best = max(best, ratio)
+        if best >= 0.90:
+            break
+
+    if best >= 0.88:
+        return best
 
     # Checa também se alguma parte separada por espaço bate
     if len(parts) > 1:
         for p in parts:
             for p_v in expand_lyric_variants(p):
+                len_p = len(p_v)
                 for l_orig in l_origs:
                     for l_v in expand_lyric_variants(l_orig):
                         if p_v == l_v:
                             best = max(best, 0.88)
-                        elif len(p_v) >= 4 and len(l_v) >= 4 and (p_v in l_v or l_v in p_v):
+                        elif len_p >= 4 and len(l_v) >= 4 and (p_v in l_v or l_v in p_v):
                             best = max(best, 0.80)
 
     return best

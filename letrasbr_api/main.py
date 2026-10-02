@@ -141,14 +141,18 @@ def _do_fetch_lyrics_sync(
     lang: Optional[str] = None,
     source: str = "ytmusic",
     album: Optional[str] = None,
-    duration: Optional[float] = None
+    duration: Optional[float] = None,
+    generation: int = 0
 ):
-    # Estado já foi resetado atomicamente por _reset_state_for_new_track antes desta thread iniciar.
-    # Aqui apenas executamos a busca de letras (operação potencialmente lenta).
-    provider = ProviderFactory.get_provider(source)
-    active_lang = state.lang
+    # Early exit if a newer track has superseded this fetch before it starts
+    if state.fetch_generation != generation:
+        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto antes do início (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+        return
 
-    safe_print(f"[{now_str()}] 🌐 Idioma: {active_lang.upper()} | Track ID: {track_id or 'n/a'}")
+    provider = ProviderFactory.get_provider(source)
+    active_lang = (lang or state.lang or "pt").lower().strip()
+
+    safe_print(f"[{now_str()}] 🌐 Idioma: {active_lang.upper()} | Track ID: {track_id or 'n/a'} (gen={generation})")
     safe_print("=" * 70)
 
     # 1. Busca letras sincronizadas através do Provider Adapter
@@ -161,30 +165,49 @@ def _do_fetch_lyrics_sync(
         duration=duration,
         source=provider.provider_id
     )
-    state.timed_lyrics = provider.get_timed_lyrics(track_info) or []
-    if state.timed_lyrics:
-        safe_print(f"[{now_str()}] ✅ [{provider.provider_id.upper()}] {len(state.timed_lyrics)} versos com timestamps carregados!")
+    timed_lyrics = provider.get_timed_lyrics(track_info) or []
+    if timed_lyrics:
+        safe_print(f"[{now_str()}] ✅ [{provider.provider_id.upper()}] {len(timed_lyrics)} versos com timestamps carregados!")
     else:
         safe_print(f"[{now_str()}] ⚠️ [{provider.provider_id.upper()}] Nenhuma letra sincronizada encontrada para esta faixa.")
 
+    # Check generation after timed lyrics fetch
+    if state.fetch_generation != generation:
+        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto após busca de timestamps (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+        return
+
     # 2. Busca tradução no Letras.mus.br no idioma configurado
-    safe_print(f"[{now_str()}] [2/3] 🌐 Buscando tradução ({state.lang.upper()}) verso a verso no Letras.mus.br...")
+    safe_print(f"[{now_str()}] [2/3] 🌐 Buscando tradução ({active_lang.upper()}) verso a verso no Letras.mus.br...")
     cleaned_title = clean_song_title(title)
-    trans_dict, ordered_verses, trans_url = get_translation(artist, cleaned_title, lang=state.lang)
-    state.translation_dict = trans_dict
-    state.ordered_verses = ordered_verses
-    state.translation_url = trans_url
+    trans_dict, ordered_verses, trans_url = get_translation(artist, cleaned_title, lang=active_lang)
 
     if ordered_verses or trans_dict:
-        safe_print(f"[{now_str()}] ✅ [LETRAS] {len(trans_dict)} versos traduzidos ({state.lang.upper()}) carregados com sucesso!")
+        safe_print(f"[{now_str()}] ✅ [LETRAS] {len(trans_dict)} versos traduzidos ({active_lang.upper()}) carregados com sucesso!")
         safe_print(f"[{now_str()}] 🌐 Link: {trans_url}")
     else:
         safe_print(f"[{now_str()}] ⚠️ [LETRAS] Não foi possível carregar a tradução de '{cleaned_title}'.")
 
+    # Check generation after translation scraping
+    if state.fetch_generation != generation:
+        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto após scraping de tradução (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+        return
+
     # 3. Pré-alinhamento global de todos os versos (atribuição antecipada e preenchimento de lacunas)
     safe_print(f"[{now_str()}] [3/3] ⚙️ Executando pré-alinhamento global e preenchimento de lacunas...")
-    state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses, title=title, artist=artist, lang=state.lang)
-    safe_print(f"[{now_str()}] ✅ {len(state.aligned_lyrics)} versos alinhados e prontos com latência zero!")
+    aligned_lyrics = align_lyrics(timed_lyrics, ordered_verses, title=title, artist=artist, lang=active_lang)
+    safe_print(f"[{now_str()}] ✅ {len(aligned_lyrics)} versos alinhados e prontos com latência zero!")
+
+    # Check generation one final time before mutating state
+    if state.fetch_generation != generation:
+        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto antes da atribuição de estado (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+        return
+
+    # Assign atomically to state only if generation matches
+    state.timed_lyrics = timed_lyrics
+    state.translation_dict = trans_dict
+    state.ordered_verses = ordered_verses
+    state.translation_url = trans_url
+    state.aligned_lyrics = aligned_lyrics
 
     safe_print("-" * 70)
     safe_print(f"[{now_str()}] ⏳ Sincronização ao vivo ativada. Aguardando reprodução...\n")
@@ -238,7 +261,7 @@ async def _fetch_lyrics_background(
         await loop.run_in_executor(
             _lyrics_executor,
             lambda: _do_fetch_lyrics_sync(
-                title, artist, track_id, lang, source, album, duration
+                title, artist, track_id, lang, source, album, duration, generation
             )
         )
     except Exception as e:
@@ -260,7 +283,7 @@ async def sync_playback(payload: SyncPayload, request: Request):
     if effective_track_id:
         song_id += f"|||{effective_track_id.strip()}"
 
-    active_lang = state.lang
+    active_lang = (payload.lang or state.lang or "pt").lower().strip()
     new_key = f"{song_id}|||{active_lang}"
     is_new_song = (new_key != state.song_key)
 
@@ -479,6 +502,8 @@ def reset_playback_state():
     state.is_paused = True
     state.current_seconds = 0.0
     state.duration_seconds = 0.0
+    state.is_fetching = False
+    state.fetch_generation += 1
     safe_print(f"[{now_str()}] ⏹️ Sessão de reprodução encerrada pelo cliente. Estado resetado.")
 
 
