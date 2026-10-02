@@ -5,9 +5,11 @@ from typing import List, Any, Optional
 
 LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
 LOG_FILE = os.path.join(LOGS_DIR, "sem_traducao.log")
+LOG_UNSYNCED_FILE = os.path.join(LOGS_DIR, "sem_sincronizacao.log")
 
 _lock = threading.Lock()
 _logged_cache = set()
+_logged_unsynced_cache = set()
 
 
 def ms_to_time_str(ms: int) -> str:
@@ -96,3 +98,53 @@ def log_untranslated_lyrics(
             print(f"[Log] {len(missing_snippets)} trecho(s) sem tradução registrado(s) em logs/sem_traducao.log para '{title}'")
         except Exception as e:
             print(f"[Log] Erro ao registrar trechos sem tradução: {e}")
+
+
+def log_unsynced_song(
+    title: str,
+    artist: str,
+    source: str = "ytmusic",
+    reason: str = "Letra sincronizada não encontrada no provedor",
+    force: bool = False
+):
+    """
+    Registra no arquivo logs/sem_sincronizacao.log quando uma música é tocada
+    mas nenhuma letra sincronizada é encontrada para ela.
+    """
+    if not title:
+        return
+
+    cache_key = f"{artist.strip().lower()}|||{title.strip().lower()}"
+    with _lock:
+        if not force and cache_key in _logged_unsynced_cache:
+            return
+        _logged_unsynced_cache.add(cache_key)
+
+        try:
+            os.makedirs(LOGS_DIR, exist_ok=True)
+
+            if not os.path.exists(LOG_UNSYNCED_FILE) or os.path.getsize(LOG_UNSYNCED_FILE) == 0:
+                with open(LOG_UNSYNCED_FILE, "w", encoding="utf-8") as f:
+                    f.write("=" * 80 + "\n")
+                    f.write("  LETRASBR - REGISTRO DE MÚSICAS SEM SINCRONIZAÇÃO\n")
+                    f.write("  Armazena automaticamente as músicas onde não foi encontrada letra com timestamps.\n")
+                    f.write("=" * 80 + "\n\n")
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            src_display = "Spotify" if "spotify" in (source or "").lower() else "YouTube Music"
+            lines_to_write = [
+                f"[{timestamp}]",
+                f"Música:  {title}",
+                f"Artista: {artist or 'Desconhecido'}",
+                f"Fonte:   {src_display}",
+                f"Motivo:  {reason}",
+                "-" * 80 + "\n"
+            ]
+
+            with open(LOG_UNSYNCED_FILE, "a", encoding="utf-8") as f:
+                f.write("\n".join(lines_to_write) + "\n")
+
+            print(f"[Log] Música sem sincronização registrada em logs/sem_sincronizacao.log: '{artist} - {title}'")
+        except Exception as e:
+            print(f"[Log] Erro ao registrar música sem sincronização: {e}")
+

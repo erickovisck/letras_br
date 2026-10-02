@@ -9,6 +9,7 @@ __pycache__/
 # Temporary and log files
 *.log
 !logs/sem_traducao.log
+!logs/sem_sincronizacao.log
 scratch/
 logs/*.json
 scripts/*.json

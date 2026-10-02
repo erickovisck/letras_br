@@ -10,17 +10,9 @@ from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.letras.mus.br"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-    "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "upgrade-insecure-requests": "1",
+    "User-Agent": "Letras/3.14.0 (Android; 14; Mobile)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
 }
 
 _client: Optional[httpx.Client] = None
@@ -350,6 +342,8 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
                             matched = True
                         elif any(len(title_slug) >= 6 and len(ts) >= 6 and title_slug.replace('ou', 'o') == ts.replace('ou', 'o') for ts in tag_slugs):
                             matched = True
+                        elif any(len(title_slug) >= 5 and len(ts) >= 5 and difflib.SequenceMatcher(None, title_slug, ts).ratio() >= 0.82 for ts in tag_slugs):
+                            matched = True
                         elif href_lower.rstrip("/").endswith(f"/{title_slug}"):
                             matched = True
                         elif len(title_slug) >= 6 and title_slug.replace('ou', 'o') in href_lower.replace('ou', 'o'):
@@ -496,14 +490,21 @@ def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict
                         "originals": current_origs
                     })
 
-        # Fallback alternativo para páginas antigas com divs separados
+        # Fallback alternativo para páginas com colunas separadas (ex: lyric-translation-left/right ou lyric-original/lyric-translation)
         if not lyrics_dict:
-            log("Tentando extração alternativa em lyric-original e lyric-translation...")
-            lyrics_div = soup.find("div", class_="lyric-original")
-            translation_div = soup.find("div", class_="lyric-translation") or soup.find("div", class_="translation-single")
+            log("Tentando extração alternativa em colunas de tradução...")
+            lyrics_div = (
+                soup.find("div", class_="lyric-translation-left")
+                or soup.find("div", class_="lyric-original")
+            )
+            translation_div = (
+                soup.find("div", class_="lyric-translation-right")
+                or (soup.find("div", class_="lyric-translation") if not soup.find("div", class_="lyric-translation-left") else None)
+                or soup.find("div", class_="translation-single")
+            )
             if lyrics_div and translation_div:
-                orig_paragraphs = [p.get_text(separator="\n").split("\n") for p in lyrics_div.find_all("p")]
-                trans_paragraphs = [p.get_text(separator="\n").split("\n") for p in translation_div.find_all("p")]
+                orig_paragraphs = [[l.strip() for l in p.get_text(separator="\n").split("\n") if l.strip()] for p in lyrics_div.find_all("p")]
+                trans_paragraphs = [[l.strip() for l in p.get_text(separator="\n").split("\n") if l.strip()] for p in translation_div.find_all("p")]
                 for orig_p, trans_p in zip(orig_paragraphs, trans_paragraphs):
                     for orig_line, trans_line in zip(orig_p, trans_p):
                         o_clean = orig_line.strip()

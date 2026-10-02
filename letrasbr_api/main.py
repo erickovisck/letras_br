@@ -170,6 +170,16 @@ def _do_fetch_lyrics_sync(
         safe_print(f"[{now_str()}] ✅ [{provider.provider_id.upper()}] {len(timed_lyrics)} versos com timestamps carregados!")
     else:
         safe_print(f"[{now_str()}] ⚠️ [{provider.provider_id.upper()}] Nenhuma letra sincronizada encontrada para esta faixa.")
+        try:
+            from translation_logger import log_unsynced_song
+            log_unsynced_song(
+                title=title,
+                artist=artist,
+                source=provider.provider_id,
+                reason=f"Nenhuma letra sincronizada encontrada no {provider.provider_id.upper()}"
+            )
+        except Exception:
+            pass
 
     # Check generation after timed lyrics fetch
     if state.fetch_generation != generation:

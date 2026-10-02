@@ -90,6 +90,17 @@ class LyricsFetchWorker(QThread):
                 source="ytmusic"
             )
             timed_lyrics = provider.get_timed_lyrics(track_info) or []
+            if not timed_lyrics:
+                try:
+                    from translation_logger import log_unsynced_song
+                    log_unsynced_song(
+                        title=self.title,
+                        artist=self.artist,
+                        source="ytmusic",
+                        reason="Nenhuma letra sincronizada encontrada no provedor"
+                    )
+                except Exception:
+                    pass
 
             # 2. Busca tradução no Letras.mus.br
             cleaned_title = clean_song_title(self.title)

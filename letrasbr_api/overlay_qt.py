@@ -17,13 +17,13 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush, QIcon, QAction,
-    QFontDatabase, QCursor, QPixmap, QGuiApplication
+    QFontDatabase, QCursor, QPixmap, QGuiApplication, QFontMetrics
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QFrame, QDialog, QFontComboBox, QSpinBox, QSlider, QComboBox,
     QColorDialog, QLineEdit, QCheckBox, QSystemTrayIcon, QMenu,
-    QGraphicsOpacityEffect, QSizeGrip, QMessageBox, QInputDialog
+    QGraphicsOpacityEffect, QSizeGrip, QMessageBox, QInputDialog, QSizePolicy
 )
 
 # Adiciona diretório ao path
@@ -172,6 +172,145 @@ class HexColorLineEdit(QLineEdit):
             super().paste()
 
 
+class ElidedStatusLabel(QLabel):
+    """
+    Label inteligente para a barra de status / faixa atual.
+    Permite que a janela do overlay seja reduzida sem que o texto longo trave o layout,
+    e abrevia proporcionalmente o título e os autores com reticências (...) conforme
+    o tamanho da tela for alterado.
+    """
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self._artist: str = ""
+        self._title: str = ""
+        self._prefix: str = ""
+        self._suffix: str = ""
+        self._plain_text: str = text
+        self._full_tooltip: str = text
+        self.setToolTip(text)
+
+    def minimumSizeHint(self) -> QSize:
+        # Retorna largura mínima de 20px para que a janela possa ser diminuída livremente
+        return QSize(20, self.fontMetrics().height())
+
+    def set_track_info(self, artist: str, title: str, prefix: str = "", suffix: str = "", tooltip: Optional[str] = None):
+        """Define artista(s) e título separadamente para permitir abreviação proporcional de ambos."""
+        self._artist = (artist or "").strip()
+        self._title = (title or "").strip()
+        self._prefix = prefix or ""
+        self._suffix = suffix or ""
+        self._plain_text = ""
+
+        full = f"{self._prefix}{self._artist} - {self._title}{self._suffix}".strip()
+        self._full_tooltip = tooltip or full
+        super().setToolTip(self._full_tooltip)
+        self._update_elided_text()
+
+    def setText(self, text: str):
+        """Compatibilidade para chamadas diretas de setText."""
+        raw = text or ""
+        self._full_tooltip = raw
+        super().setToolTip(raw)
+
+        # Se tiver o separador " - ", tenta extrair prefixo, artista e título automaticamente
+        if " - " in raw and not self._artist and not self._title:
+            parts = raw.split(" - ", 1)
+            prefix = ""
+            p0 = parts[0]
+            if p0.startswith("⚠️ "):
+                prefix = "⚠️ "
+                p0 = p0[3:]
+            p1 = parts[1]
+            suffix = ""
+            if " (sem sincronização)" in p1:
+                p1 = p1.replace(" (sem sincronização)", "")
+                suffix = " (sem sincronização)"
+            self._prefix = prefix
+            self._artist = p0.strip()
+            self._title = p1.strip()
+            self._suffix = suffix
+            self._plain_text = ""
+        else:
+            self._plain_text = raw
+            self._artist = ""
+            self._title = ""
+            self._prefix = ""
+            self._suffix = ""
+
+        self._update_elided_text()
+
+    def setToolTip(self, text: str):
+        self._full_tooltip = text
+        super().setToolTip(text)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_elided_text()
+
+    def _update_elided_text(self):
+        fm = self.fontMetrics()
+        avail_w = max(0, self.width() - 2)
+        if avail_w <= 0:
+            return
+
+        if self._artist or self._title:
+            elided = self._calculate_track_abbreviation(avail_w, fm)
+        else:
+            elided = fm.elidedText(self._plain_text, Qt.ElideRight, avail_w)
+
+        super().setText(elided)
+
+    def _calculate_track_abbreviation(self, avail_w: int, fm: QFontMetrics) -> str:
+        prefix = self._prefix
+        suffix = self._suffix
+        artist = self._artist
+        title = self._title
+
+        full = f"{prefix}{artist} - {title}{suffix}".strip()
+        if fm.horizontalAdvance(full) <= avail_w:
+            return full
+
+        # Ajusta sufixo se a largura estiver apertada
+        eff_suffix = suffix
+        if suffix and avail_w < 320:
+            if "sem sincronização" in suffix.lower():
+                eff_suffix = " (sem sync)"
+        if suffix and avail_w < 220:
+            eff_suffix = ""
+
+        w_prefix = fm.horizontalAdvance(prefix) if prefix else 0
+        w_suffix = fm.horizontalAdvance(eff_suffix) if eff_suffix else 0
+        w_sep = fm.horizontalAdvance(" - ")
+
+        net_w = avail_w - w_prefix - w_suffix - w_sep
+        if net_w <= 25:
+            return fm.elidedText(full, Qt.ElideRight, avail_w)
+
+        w_a = fm.horizontalAdvance(artist)
+        w_t = fm.horizontalAdvance(title)
+
+        half = net_w // 2
+        if w_a <= half:
+            alloc_a = w_a
+            alloc_t = net_w - alloc_a
+        elif w_t <= half:
+            alloc_t = w_t
+            alloc_a = net_w - alloc_t
+        else:
+            # Distribui proporcionalmente entre autores e título
+            ratio = w_a / max(1, (w_a + w_t))
+            alloc_a = max(25, int(net_w * ratio))
+            alloc_t = net_w - alloc_a
+            if alloc_t < 25:
+                alloc_t = 25
+                alloc_a = max(20, net_w - alloc_t)
+
+        elided_a = fm.elidedText(artist, Qt.ElideRight, alloc_a)
+        elided_t = fm.elidedText(title, Qt.ElideRight, alloc_t)
+        return f"{prefix}{elided_a} - {elided_t}{eff_suffix}"
+
+
 class ResizeGripLabel(QLabel):
     """
     Ícone estilizado no canto inferior direito para redimensionar largura e altura.
@@ -208,8 +347,8 @@ class ResizeGripLabel(QLabel):
     def mouseMoveEvent(self, event):
         if self._dragging:
             delta = event.globalPosition().toPoint() - self._start_pos
-            new_w = max(380, self._start_size.width() + delta.x())
-            new_h = max(80, self._start_size.height() + delta.y())
+            new_w = max(240, self._start_size.width() + delta.x())
+            new_h = max(70, self._start_size.height() + delta.y())
             self.window.resize(new_w, new_h)
             event.accept()
 
@@ -942,9 +1081,10 @@ class LyricsOverlayQt(QWidget):
         # Posicionamento e dimensões
         x = self.config.get("x", 100)
         y = self.config.get("y", 100)
-        w = max(400, self.config.get("width", 650))
-        h = max(90, self.config.get("height", 115))
+        w = max(240, self.config.get("width", 650))
+        h = max(70, self.config.get("height", 115))
         self.setGeometry(x, y, w, h)
+        self.setMinimumSize(240, 36)
 
         # Conecta eventos do media monitor
         if self.media_monitor:
@@ -1002,12 +1142,14 @@ class LyricsOverlayQt(QWidget):
         self.timeline_slider = QSlider(Qt.Horizontal, self.top_bar)
         self.timeline_slider.setRange(0, 1000)
         self.timeline_slider.setValue(0)
-        self.timeline_slider.setFixedWidth(100)
+        self.timeline_slider.setMinimumWidth(30)
+        self.timeline_slider.setMaximumWidth(100)
+        self.timeline_slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.timeline_slider.setCursor(Qt.PointingHandCursor)
         self.timeline_slider.setToolTip("Arraste para avançar ou voltar a música")
 
         self.lbl_time = QLabel("00:00", self.top_bar)
-        self.lbl_time.setStyleSheet("font-size: 9px; color: #94a3b8; min-width: 58px;")
+        self.lbl_time.setStyleSheet("font-size: 9px; color: #94a3b8;")
 
         def on_slider_pressed():
             self._is_user_seeking = True
@@ -1031,15 +1173,16 @@ class LyricsOverlayQt(QWidget):
         top_layout.addWidget(self.lbl_time)
 
         # Separador vertical
-        sep = QLabel("|", self.top_bar)
-        sep.setStyleSheet("color: #334155;")
-        top_layout.addWidget(sep)
+        self.top_sep = QLabel("|", self.top_bar)
+        self.top_sep.setStyleSheet("color: #334155;")
+        top_layout.addWidget(self.top_sep)
 
         # Status / Faixa atual com ícone do app no lugar de "Sincronizado"
         self.status_container = QWidget(self.top_bar)
+        self.status_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         status_layout = QHBoxLayout(self.status_container)
         status_layout.setContentsMargins(0, 0, 0, 0)
-        status_layout.setSpacing(5)
+        status_layout.setSpacing(4)
 
         self.lbl_source_icon = QLabel(self.status_container)
         self.lbl_source_icon.setFixedSize(14, 14)
@@ -1047,7 +1190,7 @@ class LyricsOverlayQt(QWidget):
         self.lbl_source_icon.setVisible(False)
         status_layout.addWidget(self.lbl_source_icon)
 
-        self.lbl_status = QLabel("Aguardando reprodução no Windows (YouTube Music / Spotify)...", self.status_container)
+        self.lbl_status = ElidedStatusLabel("Aguardando reprodução no Windows (YouTube Music / Spotify)...", self.status_container)
         self.lbl_status.setStyleSheet("font-size: 10px; color: #64748b;")
         status_layout.addWidget(self.lbl_status, 1)
 
@@ -1332,7 +1475,7 @@ class LyricsOverlayQt(QWidget):
             return
 
         self.lbl_source_icon.setVisible(False)
-        self.lbl_status.setText(f"{artist} - {title}")
+        self.lbl_status.set_track_info(artist, title)
         self.lyric_widget.set_texts_animated("Carregando tradução...", f"{artist} - {title}")
 
         lang = self.config.get("lang", "pt")
@@ -1356,21 +1499,53 @@ class LyricsOverlayQt(QWidget):
             # O ícone do player ativo substitui o antigo texto "🟢 Sincronizado"
             self._update_source_icon_display(getattr(self, "_current_source", "youtube"))
             self.lbl_source_icon.setVisible(True)
-            self.lbl_status.setText(f"{self.current_artist} - {self.current_title}")
             versos = len(self.aligned_lyrics)
             src_name = "Spotify" if getattr(self, "_current_source", "") == "spotify" else "YouTube Music"
             tooltip = f"Sincronizado ({versos} versos) via {src_name}"
             self.lbl_source_icon.setToolTip(tooltip)
-            self.lbl_status.setToolTip(tooltip)
+            self.lbl_status.set_track_info(
+                self.current_artist,
+                self.current_title,
+                tooltip=f"{self.current_artist} - {self.current_title}\n{tooltip}"
+            )
         else:
             self.lbl_source_icon.setVisible(False)
-            self.lbl_status.setText(f"⚠️ {self.current_artist} - {self.current_title} (sem sincronização)")
+            tooltip = f"⚠️ {self.current_artist} - {self.current_title} (sem sincronização)"
+            self.lbl_status.set_track_info(
+                self.current_artist,
+                self.current_title,
+                prefix="⚠️ ",
+                suffix=" (sem sincronização)",
+                tooltip=tooltip
+            )
             self.lyric_widget.set_texts_instant("Letra sincronizada não disponível no momento.", "")
+            try:
+                from translation_logger import log_unsynced_song
+                src = getattr(self, "_current_source", "ytmusic")
+                log_unsynced_song(
+                    title=self.current_title,
+                    artist=self.current_artist,
+                    source=src,
+                    reason="Letra sincronizada não disponível no momento"
+                )
+            except Exception:
+                pass
 
     def _on_lyrics_error(self, req_id: int, err_msg: str):
         self.lbl_source_icon.setVisible(False)
         self.lbl_status.setText(f"⚠️ Tradução não encontrada")
         self.lyric_widget.set_texts_instant("Tradução não disponível para esta faixa.", "")
+        try:
+            from translation_logger import log_unsynced_song
+            src = getattr(self, "_current_source", "ytmusic")
+            log_unsynced_song(
+                title=self.current_title,
+                artist=self.current_artist,
+                source=src,
+                reason=f"Falha ao carregar letra: {err_msg}"
+            )
+        except Exception:
+            pass
 
     @Slot(float, float, bool)
     def _on_playback_tick(self, current_seconds: float, duration: float, is_paused: bool):
@@ -1449,6 +1624,17 @@ class LyricsOverlayQt(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        w = self.width()
+        if hasattr(self, "lbl_grip"):
+            self.lbl_grip.setText("⠿" if w < 360 else "⠿ LetrasBR")
+        if hasattr(self, "top_sep"):
+            self.top_sep.setVisible(w >= 300)
+        if hasattr(self, "timeline_slider"):
+            self.timeline_slider.setVisible(w >= 260)
+        if hasattr(self, "lbl_time"):
+            self.lbl_time.setVisible(w >= 260)
+        if hasattr(self, "lbl_status") and hasattr(self.lbl_status, "_update_elided_text"):
+            self.lbl_status._update_elided_text()
         if not self.is_compact:
             self.config["width"] = self.width()
             self.config["height"] = self.height()
