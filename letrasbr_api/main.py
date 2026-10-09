@@ -24,10 +24,10 @@ if current_dir not in sys.path:
 
 root_dir = os.path.abspath(os.path.join(current_dir, ".."))
 
-from scraper import get_translation, clean_song_title
-from aligner import align_lyrics, find_active_aligned_line, AlignedLine
+from aligner import find_active_aligned_line, AlignedLine
+from pipeline import fetch_and_align, LyricsResult
 from config import get_config, save_config
-from providers import ProviderFactory, TrackInfo, TimedLine
+from providers import ProviderFactory, TimedLine
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 _lyrics_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="lyrics_fetch")
@@ -88,10 +88,10 @@ class PlaybackState:
         self.source: str = "ytmusic"
         self.lang: str = get_config().get("lang", "pt")  # Idioma padrão vindo da configuração
         self.timed_lyrics: List[TimedLine] = []
-        self.ordered_verses: List[Dict[str, Any]] = []
         self.aligned_lyrics: List[AlignedLine] = []
-        self.translation_dict: Dict[str, str] = {}
         self.translation_url: Optional[str] = None
+        self.translation_source: str = "none"  # letras | auto | mixed | original | none
+        self.timing_source: str = "none"       # ytmusic | lrclib | estimated | none
         self.last_line_key: Optional[Any] = None
         self.current_time_ms: int = 0
         self.active_original: str = ""
@@ -134,6 +134,14 @@ def safe_print(*args, **kwargs):
         print(*cleaned_args, **kwargs)
 
 
+def _apply_result(result: LyricsResult):
+    state.timed_lyrics = result.timed_lyrics
+    state.aligned_lyrics = result.aligned
+    state.translation_url = result.translation_url
+    state.translation_source = result.translation_source
+    state.timing_source = result.timing_source
+
+
 def _do_fetch_lyrics_sync(
     title: str,
     artist: str,
@@ -144,71 +152,35 @@ def _do_fetch_lyrics_sync(
     duration: Optional[float] = None,
     generation: int = 0
 ):
-    # Early exit if a newer track has superseded this fetch before it starts
-    if state.fetch_generation != generation:
+    is_current = lambda: state.fetch_generation == generation
+    if not is_current():
         safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto antes do início (geração {generation} vs atual {state.fetch_generation}). Descartando.")
         return
 
     provider = ProviderFactory.get_provider(source)
     active_lang = (lang or state.lang or "pt").lower().strip()
-
     safe_print(f"[{now_str()}] 🌐 Idioma: {active_lang.upper()} | Track ID: {track_id or 'n/a'} (gen={generation})")
     safe_print("=" * 70)
 
-    # 1. Busca letras sincronizadas através do Provider Adapter
-    safe_print(f"[{now_str()}] [1/3] 🔍 Buscando letras sincronizadas no provedor '{provider.provider_id.upper()}'...")
-    track_info = TrackInfo(
+    result = fetch_and_align(
         title=title,
         artist=artist,
         album=album,
-        track_id=track_id,
         duration=duration,
-        source=provider.provider_id
+        lang=active_lang,
+        source="spotify" if provider.provider_id == "spotify" else "ytmusic",
+        track_id=track_id,
+        auto_translate=bool(get_config().get("autoTranslate", True)),
+        is_current=is_current,
     )
-    timed_lyrics = provider.get_timed_lyrics(track_info) or []
-    if timed_lyrics:
-        safe_print(f"[{now_str()}] ✅ [{provider.provider_id.upper()}] {len(timed_lyrics)} versos com timestamps carregados!")
-    else:
-        safe_print(f"[{now_str()}] ⚠️ [{provider.provider_id.upper()}] Nenhuma letra sincronizada encontrada para esta faixa.")
 
-    # Check generation after timed lyrics fetch
-    if state.fetch_generation != generation:
-        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto após busca de timestamps (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+    # Atribui ao estado apenas se ainda somos a geração atual
+    if result is None or not is_current():
+        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto (geração {generation} vs atual {state.fetch_generation}). Descartando.")
         return
 
-    # 2. Busca tradução no Letras.mus.br no idioma configurado
-    safe_print(f"[{now_str()}] [2/3] 🌐 Buscando tradução ({active_lang.upper()}) verso a verso no Letras.mus.br...")
-    cleaned_title = clean_song_title(title)
-    trans_dict, ordered_verses, trans_url = get_translation(artist, cleaned_title, lang=active_lang)
-
-    if ordered_verses or trans_dict:
-        safe_print(f"[{now_str()}] ✅ [LETRAS] {len(trans_dict)} versos traduzidos ({active_lang.upper()}) carregados com sucesso!")
-        safe_print(f"[{now_str()}] 🌐 Link: {trans_url}")
-    else:
-        safe_print(f"[{now_str()}] ⚠️ [LETRAS] Não foi possível carregar a tradução de '{cleaned_title}'.")
-
-    # Check generation after translation scraping
-    if state.fetch_generation != generation:
-        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto após scraping de tradução (geração {generation} vs atual {state.fetch_generation}). Descartando.")
-        return
-
-    # 3. Pré-alinhamento global de todos os versos (atribuição antecipada e preenchimento de lacunas)
-    safe_print(f"[{now_str()}] [3/3] ⚙️ Executando pré-alinhamento global e preenchimento de lacunas...")
-    aligned_lyrics = align_lyrics(timed_lyrics, ordered_verses, title=title, artist=artist, lang=active_lang)
-    safe_print(f"[{now_str()}] ✅ {len(aligned_lyrics)} versos alinhados e prontos com latência zero!")
-
-    # Check generation one final time before mutating state
-    if state.fetch_generation != generation:
-        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto antes da atribuição de estado (geração {generation} vs atual {state.fetch_generation}). Descartando.")
-        return
-
-    # Assign atomically to state only if generation matches
-    state.timed_lyrics = timed_lyrics
-    state.translation_dict = trans_dict
-    state.ordered_verses = ordered_verses
-    state.translation_url = trans_url
-    state.aligned_lyrics = aligned_lyrics
-
+    _apply_result(result)
+    safe_print(f"[{now_str()}] ✅ {len(result.aligned)} versos alinhados (letra: {result.timing_source}, tradução: {result.translation_source}).")
     safe_print("-" * 70)
     safe_print(f"[{now_str()}] ⏳ Sincronização ao vivo ativada. Aguardando reprodução...\n")
 
@@ -230,9 +202,9 @@ def _reset_state_for_new_track(
     state.last_line_key = None
     state.aligned_lyrics = []
     state.timed_lyrics = []
-    state.ordered_verses = []
-    state.translation_dict = {}
     state.translation_url = None
+    state.translation_source = "none"
+    state.timing_source = "none"
     state.active_original = ""
     state.active_translation = ""
     state.is_fetching = True
@@ -396,36 +368,19 @@ def change_language_internal(new_lang: str):
             song_id += f"|||{effective_id.strip()}"
         state.song_key = f"{song_id}|||{new_lang}"
 
-        # 1. Se ainda não temos letras com timestamps, busca pelo adapter do provedor
-        if not state.timed_lyrics:
-            safe_print(f"[{now_str()}] [1/2] 🔍 Buscando letras sincronizadas no provedor '{provider.provider_id.upper()}'...")
-            track_info = TrackInfo(
-                title=state.title,
-                artist=state.artist,
-                album=state.album,
-                track_id=effective_id,
-                duration=state.duration_seconds,
-                source=provider.provider_id
-            )
-            state.timed_lyrics = provider.get_timed_lyrics(track_info) or []
-
-        # 2. Busca tradução no novo idioma
-        safe_print(f"[{now_str()}] [1/2] 🌐 Buscando tradução ({new_lang.upper()}) verso a verso no Letras.mus.br...")
-        cleaned_title = clean_song_title(state.title)
-        trans_dict, ordered_verses, trans_url = get_translation(state.artist, cleaned_title, lang=new_lang)
-        state.translation_dict = trans_dict
-        state.ordered_verses = ordered_verses
-        state.translation_url = trans_url
-
-        if ordered_verses or trans_dict:
-            safe_print(f"[{now_str()}] ✅ [LETRAS] {len(trans_dict)} versos traduzidos ({new_lang.upper()}) carregados com sucesso!")
-            safe_print(f"[{now_str()}] 🌐 Link: {trans_url}")
-        else:
-            safe_print(f"[{now_str()}] ⚠️ [LETRAS] Não foi possível carregar a tradução de '{cleaned_title}'.")
-
-        # 3. Re-alinha os versos
-        safe_print(f"[{now_str()}] [2/2] ⚙️ Re-alinhando versos no idioma {new_lang.upper()}...")
-        state.aligned_lyrics = align_lyrics(state.timed_lyrics, ordered_verses, title=state.title, artist=state.artist, lang=new_lang)
+        # Reaproveita a letra sincronizada já carregada; só refaz tradução e alinhamento
+        result = fetch_and_align(
+            title=state.title,
+            artist=state.artist,
+            album=state.album,
+            duration=state.duration_seconds,
+            lang=new_lang,
+            source="spotify" if provider.provider_id == "spotify" else "ytmusic",
+            track_id=effective_id,
+            auto_translate=bool(get_config().get("autoTranslate", True)),
+            timed_lyrics=state.timed_lyrics or None,
+        )
+        _apply_result(result)
         state.last_line_key = None
 
         # Reencontra a linha ativa no tempo atual para atualização imediata
@@ -491,10 +446,10 @@ def reset_playback_state():
     state.track_id = None
     state.video_id = None
     state.timed_lyrics = []
-    state.ordered_verses = []
     state.aligned_lyrics = []
-    state.translation_dict = {}
     state.translation_url = None
+    state.translation_source = "none"
+    state.timing_source = "none"
     state.last_line_key = None
     state.current_time_ms = 0
     state.active_original = ""
@@ -534,7 +489,9 @@ def get_current():
         "activeTranslation": state.active_translation,
         "translationUrl": state.translation_url,
         "hasTimedLyrics": len(state.timed_lyrics) > 0,
-        "hasTranslation": len(state.translation_dict) > 0,
+        "hasTranslation": state.translation_source in ("letras", "auto", "mixed"),
+        "translationSource": state.translation_source,
+        "timingSource": state.timing_source,
         "hasAlignedLyrics": len(state.aligned_lyrics) > 0,
     }
 

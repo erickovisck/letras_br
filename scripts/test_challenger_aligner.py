@@ -93,10 +93,10 @@ def test_empty_translation_verses():
     ]
     res = align_lyrics(timed, [], title="Empty Verses", artist="Challenger")
     assert len(res) == 3, f"Expected 3 lines, got {len(res)}"
-    assert res[0].translation == "(sem tradução)", f"Expected '(sem tradução)', got '{res[0].translation}'"
+    assert res[0].translation == "" and res[0].source == "none", f"Expected empty translation, got {res[0].translation!r}"
     assert res[1].is_instrumental is True, f"Expected instrumental line"
     assert res[1].translation == "(♪)", f"Expected '(♪)', got '{res[1].translation}'"
-    assert res[2].translation == "(sem tradução)", f"Expected '(sem tradução)', got '{res[2].translation}'"
+    assert res[2].translation == "" and res[2].source == "none", f"Expected empty translation, got {res[2].translation!r}"
 
 run_test("Suite 1", "0 translation lines (empty list)", test_empty_translation_verses)
 
@@ -161,7 +161,7 @@ def test_disproportionate_few_timed_many_letras():
     res = align_lyrics(timed, letras, title="Disprop 5v100", artist="Challenger")
     assert len(res) == 5, f"Expected 5 lines, got {len(res)}"
     for r in res:
-        assert r.translation != "(sem tradução)", f"Line {r} has no translation"
+        assert r.source == "letras", f"Line {r} has no translation"
         assert len(r.translation) > 0, f"Line {r} has empty translation"
 
 run_test("Suite 1", "Disproportionate: 5 timed lines vs 100 translated lines", test_disproportionate_few_timed_many_letras)

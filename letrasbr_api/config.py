@@ -26,6 +26,7 @@ DEFAULT_CONFIG = {
     "fontItalic": False,
     "displayMode": "both",  # "both", "trans", "orig"
     "lang": "pt",           # "pt", "en", "es", "fr"
+    "autoTranslate": True,  # Completa com tradução automática (Google) o que o Letras não tiver
     "locked": False,
     "theme": "Escuro (Padrão)",
     "serverUrl": "http://127.0.0.1:8000"

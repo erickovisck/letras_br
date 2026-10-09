@@ -29,7 +29,8 @@ class YouTubeMusicAdapter(MusicProviderAdapter):
         raw_lines = self._ytm.get_timed_lyrics(
             video_id=track.track_id or "",
             title=track.title,
-            artist=track.artist
+            artist=track.artist,
+            duration=track.duration
         )
         if not raw_lines:
             return None

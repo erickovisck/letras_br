@@ -15,6 +15,7 @@ scripts/*.json
 
 # User local config & agent work
 config/overlay_config.json
+config/cache/
 .agents/
 
 # IDE files

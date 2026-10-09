@@ -17,6 +17,9 @@ class AlignedLine:
     original: str
     translation: str
     is_instrumental: bool
+    # Origem da tradução: "letras" (Letras.mus.br), "auto" (tradução automática),
+    # "original" (verso já está no idioma de destino) ou "none" (sem tradução)
+    source: str = "letras"
 
 
 def is_instrumental(text: str) -> bool:
@@ -298,7 +301,7 @@ def align_lyrics(
     2. Identifica âncoras cronológicas através de programação dinâmica monotônica.
     3. Repassa todos os versos e preenche lacunas com inteligência (sem duplicar ou sobrescrever
        versos que já possuem tradução completa).
-    4. Registra automaticamente em logs/sem_traducao.log caso haja trechos sem tradução.
+    Versos sem correspondência ficam com translation="" e source="none".
     """
     if not timed_lyrics:
         return []
@@ -313,7 +316,8 @@ def align_lyrics(
                 end_time=line.end_time,
                 original="♪",
                 translation="(♪)",
-                is_instrumental=True
+                is_instrumental=True,
+                source="none"
             )
 
     # Se não temos versos traduzidos do Letras
@@ -324,17 +328,11 @@ def align_lyrics(
                     start_time=line.start_time,
                     end_time=line.end_time,
                     original=line.text,
-                    translation="(sem tradução)",
-                    is_instrumental=False
+                    translation="",
+                    is_instrumental=False,
+                    source="none"
                 )
-        final_list = [r for r in result if r is not None]
-        if title:
-            try:
-                from translation_logger import log_untranslated_lyrics
-                log_untranslated_lyrics(title, artist, lang, final_list)
-            except Exception:
-                pass
-        return final_list
+        return [r for r in result if r is not None]
 
     # Linhas vocais do YTM
     vocal_indices = [i for i, line in enumerate(timed_lyrics) if result[i] is None]
@@ -468,25 +466,16 @@ def align_lyrics(
             if not dedup_l or dedup_l[-1] != item:
                 dedup_l.append(item)
 
-        trans_str = " / ".join(dedup_l) if dedup_l else "♪"
-
         result[y_i] = AlignedLine(
             start_time=line.start_time,
             end_time=line.end_time,
             original=line.text,
-            translation=trans_str,
-            is_instrumental=False
+            translation=" / ".join(dedup_l),
+            is_instrumental=False,
+            source="letras" if dedup_l else "none"
         )
 
-    final_list = [r for r in result if r is not None]
-    if title:
-        try:
-            from translation_logger import log_untranslated_lyrics
-            log_untranslated_lyrics(title, artist, lang, final_list)
-        except Exception:
-            pass
-
-    return final_list
+    return [r for r in result if r is not None]
 
 
 def find_active_aligned_line(aligned_lines: List[AlignedLine], current_time_ms: int) -> Optional[AlignedLine]:

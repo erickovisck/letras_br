@@ -34,7 +34,23 @@ if current_dir not in sys.path:
 from config import get_config, save_config, add_config_listener, get_available_themes, save_custom_theme, THEMES_DIR
 from aligner import find_active_aligned_line, AlignedLine
 from lyrics_client import LyricsClient
+from pipeline import LyricsResult
 from media_monitor import WindowsMediaMonitor
+
+
+# Rótulos exibidos no status/tooltip para a origem da letra sincronizada e da tradução
+TIMING_SOURCE_LABELS = {
+    "ytmusic": "YouTube Music",
+    "lrclib": "LRCLIB",
+    "estimated": "estimativa pela duração",
+}
+TRANSLATION_SOURCE_LABELS = {
+    "letras": "Letras.mus.br",
+    "auto": "tradução automática",
+    "mixed": "Letras.mus.br + automática",
+    "original": "já no seu idioma",
+    "none": "sem tradução",
+}
 
 
 def load_tinted_icon(icon_name: str, color_hex: str, hover_hex: str = "#ffffff", size: int = 16) -> QIcon:
@@ -310,15 +326,14 @@ class LyricContainerWidget(QWidget):
         trans_hex = self._config.get("transColor", "#38bdf8")
         display_mode = self._config.get("displayMode", "both")
 
-        if display_mode == "orig":
-            font_orig = QFont(font_family, max(10, int(font_size * 1.15)))
-            font_orig.setBold(is_bold)
-            font_orig.setItalic(is_italic)
-            c_orig = QColor(trans_hex)
-        else:
-            font_orig = QFont(font_family, max(9, int(font_size * 0.9)))
-            font_orig.setItalic(is_italic)
-            c_orig = QColor(orig_hex)
+        # Original em destaque (mesmo estilo da tradução): modo "Apenas Original"
+        # ou versos sem tradução (música no idioma de destino, verso sem correspondência)
+        font_orig_emph = QFont(font_family, max(10, int(font_size * 1.15)))
+        font_orig_emph.setBold(is_bold)
+        font_orig_emph.setItalic(is_italic)
+
+        font_orig_normal = QFont(font_family, max(9, int(font_size * 0.9)))
+        font_orig_normal.setItalic(is_italic)
 
         font_trans = QFont(font_family, max(10, int(font_size * 1.15)))
         font_trans.setBold(is_bold)
@@ -338,12 +353,14 @@ class LyricContainerWidget(QWidget):
             painter.scale(scale, scale)
             painter.translate(-center_x, -center_y)
 
+            emphasize_orig = display_mode == "orig" or not trans_text
+            show_orig = bool(orig_text) and (display_mode in ("both", "orig") or not trans_text)
+            show_trans = bool(trans_text) and display_mode in ("both", "trans")
+            font_orig = font_orig_emph if emphasize_orig else font_orig_normal
+
             # Aplica opacidade diretamente na cor do pincel (sem QGraphicsOpacityEffect)
-            color_o = QColor(c_orig)
-            if display_mode == "orig":
-                color_o.setAlphaF(max(0.0, min(1.0, alpha)))
-            else:
-                color_o.setAlphaF(max(0.0, min(1.0, alpha * 0.85)))
+            color_o = QColor(trans_hex if emphasize_orig else orig_hex)
+            color_o.setAlphaF(max(0.0, min(1.0, alpha if emphasize_orig else alpha * 0.85)))
 
             color_t = QColor(c_trans)
             color_t.setAlphaF(max(0.0, min(1.0, alpha)))
@@ -352,18 +369,18 @@ class LyricContainerWidget(QWidget):
             max_w = max(60, w - margin_x * 2)
 
             painter.setFont(font_orig)
-            rect_o = painter.fontMetrics().boundingRect(0, 0, max_w, 200, Qt.AlignHCenter | Qt.TextWordWrap, orig_text) if (display_mode in ("both", "orig") and orig_text) else QRect(0,0,0,0)
+            rect_o = painter.fontMetrics().boundingRect(0, 0, max_w, 200, Qt.AlignHCenter | Qt.TextWordWrap, orig_text) if show_orig else QRect(0,0,0,0)
 
 
             painter.setFont(font_trans)
-            rect_t = painter.fontMetrics().boundingRect(0, 0, max_w, 200, Qt.AlignHCenter | Qt.TextWordWrap, trans_text) if (display_mode in ("both", "trans") and trans_text) else QRect(0,0,0,0)
+            rect_t = painter.fontMetrics().boundingRect(0, 0, max_w, 200, Qt.AlignHCenter | Qt.TextWordWrap, trans_text) if show_trans else QRect(0,0,0,0)
 
             spacing = 2 if (rect_o.height() > 0 and rect_t.height() > 0) else 0
             total_h = rect_o.height() + spacing + rect_t.height()
             top_y = center_y - (total_h / 2.0)
 
             # Desenha verso original
-            if display_mode in ("both", "orig") and orig_text:
+            if show_orig:
                 painter.setFont(font_orig)
                 painter.setPen(color_o)
                 target_o = QRect(margin_x, int(top_y), max_w, rect_o.height() + 4)
@@ -371,7 +388,7 @@ class LyricContainerWidget(QWidget):
                 top_y += rect_o.height() + spacing
 
             # Desenha verso traduzido
-            if display_mode in ("both", "trans") and trans_text:
+            if show_trans:
                 painter.setFont(font_trans)
                 painter.setPen(color_t)
                 target_t = QRect(margin_x, int(top_y), max_w, rect_t.height() + 4)
@@ -707,6 +724,14 @@ class SettingsDialogQt(QDialog):
         h_lang.addWidget(self.cb_lang)
         l_net.addLayout(h_lang)
 
+        self.chk_auto_translate = QCheckBox("Completar com tradução automática (Google) quando o Letras não tiver")
+        self.chk_auto_translate.setToolTip(
+            "Usada quando a música ou alguns versos não têm tradução no Letras.mus.br.\n"
+            "Versos traduzidos automaticamente aparecem marcados com ≈."
+        )
+        self.chk_auto_translate.setChecked(bool(self.cfg.get("autoTranslate", True)))
+        l_net.addWidget(self.chk_auto_translate)
+
         h_server = QHBoxLayout()
         h_server.addWidget(QLabel("Servidor API:"))
         self.txt_server = QLineEdit(self.cfg.get("serverUrl", "http://127.0.0.1:8000"))
@@ -890,6 +915,7 @@ class SettingsDialogQt(QDialog):
         self.cfg["displayMode"] = rev_mode.get(idx_mode, "both")
 
         self.cfg["lang"] = self.cb_lang.currentData()
+        self.cfg["autoTranslate"] = self.chk_auto_translate.isChecked()
         self.cfg["serverUrl"] = self.txt_server.text().strip() or "http://127.0.0.1:8000"
 
         save_config(self.cfg)
@@ -1335,31 +1361,40 @@ class LyricsOverlayQt(QWidget):
         self.lbl_status.setText(f"{artist} - {title}")
         self.lyric_widget.set_texts_animated("Carregando tradução...", f"{artist} - {title}")
 
-        lang = self.config.get("lang", "pt")
-        server_url = self.config.get("serverUrl", "http://127.0.0.1:8000")
-
         # Dispara busca desacoplada assíncrona
         self.lyrics_client.fetch_lyrics(
             title=title,
             artist=artist,
             album=album,
             duration=duration,
-            lang=lang,
-            server_url=server_url,
+            lang=self.config.get("lang", "pt"),
+            source=getattr(self, "_current_source", "youtube"),
+            auto_translate=bool(self.config.get("autoTranslate", True)),
             on_success=self._on_lyrics_loaded,
             on_error=self._on_lyrics_error
         )
 
-    def _on_lyrics_loaded(self, req_id: int, aligned: List[AlignedLine], trans_url: str):
-        self.aligned_lyrics = aligned or []
+    def _on_lyrics_loaded(self, req_id: int, result: LyricsResult):
+        self.aligned_lyrics = result.aligned if result else []
         if self.aligned_lyrics:
             # O ícone do player ativo substitui o antigo texto "🟢 Sincronizado"
             self._update_source_icon_display(getattr(self, "_current_source", "youtube"))
             self.lbl_source_icon.setVisible(True)
-            self.lbl_status.setText(f"{self.current_artist} - {self.current_title}")
+
+            notes = []
+            if result.timing_source == "estimated":
+                notes.append("sincronia estimada")
+            notes.append(TRANSLATION_SOURCE_LABELS.get(result.translation_source, ""))
+            suffix = " · ".join(n for n in notes if n)
+            self.lbl_status.setText(f"{self.current_artist} - {self.current_title}" + (f"  ·  {suffix}" if suffix else ""))
+
             versos = len(self.aligned_lyrics)
-            src_name = "Spotify" if getattr(self, "_current_source", "") == "spotify" else "YouTube Music"
-            tooltip = f"Sincronizado ({versos} versos) via {src_name}"
+            timing_name = TIMING_SOURCE_LABELS.get(result.timing_source, result.timing_source)
+            tooltip = f"Sincronizado ({versos} versos) via {timing_name}"
+            if suffix:
+                tooltip += f"\nTradução: {suffix}"
+            if result.translation_url:
+                tooltip += f"\n{result.translation_url}"
             self.lbl_source_icon.setToolTip(tooltip)
             self.lbl_status.setToolTip(tooltip)
         else:
@@ -1405,7 +1440,10 @@ class LyricsOverlayQt(QWidget):
             line_key = (active_line.start_time, active_line.original)
             if line_key != self.last_active_line_key:
                 self.last_active_line_key = line_key
-                self.lyric_widget.set_texts_animated(active_line.original, active_line.translation)
+                translation = active_line.translation
+                if active_line.source == "auto" and translation:
+                    translation = f"≈ {translation}"  # Marca tradução automática
+                self.lyric_widget.set_texts_animated(active_line.original, translation)
 
     def open_settings(self):
         dlg = SettingsDialogQt(self.config, self)
@@ -1413,11 +1451,13 @@ class LyricsOverlayQt(QWidget):
         dlg.exec()
 
     def _on_config_updated(self, new_cfg: dict):
+        old_cfg = self.config
         self.config = new_cfg
         self._apply_current_style()
 
-        # Se mudou o idioma, recarrega a música atual
-        if self.current_title and self.current_artist:
+        # Só recarrega a música atual se mudou algo que afeta a tradução (idioma ou fallback automático)
+        translation_changed = any(old_cfg.get(k) != new_cfg.get(k) for k in ("lang", "autoTranslate"))
+        if translation_changed and self.current_title and self.current_artist:
             self._on_track_changed(
                 self.current_title,
                 self.current_artist,

@@ -4,6 +4,7 @@ import difflib
 import unicodedata
 import urllib.parse
 import threading
+from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Any
 import httpx
 from bs4 import BeautifulSoup
@@ -27,9 +28,39 @@ _client: Optional[httpx.Client] = None
 _client_lock = threading.Lock()
 
 # Cache em memória para evitar re-scraping da mesma música (LRU simples)
-_translation_cache: Dict[str, Tuple] = {}
+_translation_cache: Dict[str, "TranslationResult"] = {}
 _translation_cache_lock = threading.Lock()
 _MAX_CACHE_SIZE = 60
+
+# Marca, por thread, se alguma requisição falhou de forma transitória (rede, 403, 429, 5xx).
+# Resultados vazios causados por falhas transitórias não são cacheados.
+_request_state = threading.local()
+
+# Termos que indicam uma versão alternativa da música (penalizados se o título original não os tiver)
+VERSION_TERMS = re.compile(
+    r'(?<!\w)(?:remix|live|ao vivo|en vivo|ver\.|version|vers[aã]o|acoustic|ac[uú]stico|cover|instrumental|sped up|slowed|nightcore|karaok[eê])(?!\w)',
+    re.IGNORECASE
+)
+
+
+def version_penalty(candidate_title: str, original_title: str) -> float:
+    """Penaliza candidatos com marcadores de versão (remix, live...) ausentes no título original."""
+    orig_terms = {m.lower() for m in VERSION_TERMS.findall(original_title or "")}
+    cand_terms = {m.lower() for m in VERSION_TERMS.findall(candidate_title or "")}
+    return 1.5 if (cand_terms - orig_terms) else 0.0
+
+
+@dataclass
+class TranslationResult:
+    lyrics_dict: Dict[str, str] = field(default_factory=dict)
+    ordered_verses: List[Dict[str, Any]] = field(default_factory=list)
+    url: Optional[str] = None
+    lang_used: Optional[str] = None   # Idioma da tradução efetivamente carregada (None se não houver)
+    song_found: bool = False          # A música existe no Letras (mesmo sem tradução)
+
+
+def _mark_transient_failure():
+    _request_state.transient_failure = True
 
 
 def get_client() -> httpx.Client:
@@ -63,9 +94,12 @@ def fetch_response(url: str, timeout: float = 8.0) -> Optional[httpx.Response]:
                 except Exception:
                     pass
             res = client.get(url, timeout=timeout)
+        if res.status_code in (403, 429) or res.status_code >= 500:
+            _mark_transient_failure()
         return res
     except Exception as e:
         log(f"Erro na requisicao para {url}: {e}")
+        _mark_transient_failure()
         return None
 
 
@@ -236,8 +270,9 @@ def search_letras_fallback(
             if expected_titles:
                 exp_slugs = [slugify(clean_song_title(t)) for t in expected_titles if t]
                 exp_raws = [clean_song_title(t).lower() for t in expected_titles if t]
+                matched_docs: List[Tuple[float, int, Dict[str, Any]]] = []
 
-                for doc in song_docs:
+                for doc_idx, doc in enumerate(song_docs):
                     if expected_artists:
                         doc_art = doc.get("art", "").lower()
                         doc_dns = doc.get("dns", "").lower()
@@ -286,9 +321,15 @@ def search_letras_fallback(
                                 break
 
                     if matched:
-                        found_path = f"/{doc.get('dns')}/{doc.get('url')}"
-                        log(f"Busca encontrou correspondência validada: {found_path} ('{doc_title}' por '{doc.get('art')}')")
-                        return found_path
+                        penalty = version_penalty(doc_title, " ".join(expected_titles))
+                        matched_docs.append((penalty, doc_idx, doc))
+
+                if matched_docs:
+                    # Prefere a versão original (sem remix/live...) mantendo a ordem de relevância da busca
+                    _, _, doc = min(matched_docs, key=lambda m: (m[0], m[1]))
+                    found_path = f"/{doc.get('dns')}/{doc.get('url')}"
+                    log(f"Busca encontrou correspondência validada: {found_path} ('{doc.get('txt')}' por '{doc.get('art')}')")
+                    return found_path
 
                 log(f"Nenhum resultado da busca correspondeu aos títulos esperados: {expected_titles}")
                 return None
@@ -305,22 +346,81 @@ def search_letras_fallback(
     return None
 
 
+def find_best_song_link(links: List[Any], title_candidates: List[str], original_title: str) -> Optional[Tuple[str, str]]:
+    """
+    Escolhe o link da página do artista que melhor corresponde ao título.
+    Correspondência exata vence a aproximada, e versões alternativas (remix, live...)
+    perdem pontos quando o título original não as menciona.
+    Em empate, vale a ordem dos candidatos de título e dos links na página.
+    """
+    # Pré-processa cada link uma única vez
+    entries = []
+    for a_tag in links:
+        tag_title = (a_tag.get("title") or a_tag.get_text() or "").strip()
+        if not tag_title:
+            continue
+        tag_cands = [tag_title, clean_song_title(tag_title)] + split_multilingual(tag_title)
+        entries.append((
+            a_tag["href"],
+            tag_title,
+            [slugify(c) for c in tag_cands if c],
+            [c.lower() for c in tag_cands if c],
+            version_penalty(tag_title, original_title),
+        ))
+
+    best: Optional[Tuple[float, str, str]] = None
+    for t_cand in title_candidates:
+        cleaned_t = clean_song_title(t_cand)
+        title_slug = slugify(cleaned_t)
+        if not title_slug:
+            continue
+
+        for href, tag_title, tag_slugs, tag_lowers, penalty in entries:
+            href_lower = href.lower()
+            score = 0.0
+            if tag_title.lower() == cleaned_t.lower() or tag_slugs[0] == title_slug:
+                score = 3.0
+            elif cleaned_t.lower() in tag_lowers or title_slug in tag_slugs:
+                score = 2.0
+            elif href_lower.rstrip("/").endswith(f"/{title_slug}"):
+                score = 2.0
+            elif any(len(title_slug) >= 6 and len(ts) >= 6 and title_slug.replace('ou', 'o') == ts.replace('ou', 'o') for ts in tag_slugs):
+                score = 1.5
+            elif len(title_slug) >= 6 and title_slug.replace('ou', 'o') in href_lower.replace('ou', 'o'):
+                score = 1.0
+
+            if score <= 0:
+                continue
+            score = max(0.1, score - penalty)
+            if best is None or score > best[0]:
+                best = (score, href, tag_title)
+                if score >= 3.0:
+                    return href, tag_title
+
+    return (best[1], best[2]) if best else None
+
+
 def get_song_url(artist: str, song_name: str) -> Optional[str]:
     """
     Localiza a URL da música no Letras.mus.br testando as variações de título
     (priorizando primeiro a versão em inglês/alfabeto latino).
     """
     title_candidates = split_multilingual(song_name)
-    artist_candidates = split_multilingual(artist)
+    # O nome completo do artista vem primeiro (ex: 'Peter, Paul and Mary' antes de 'Peter', 'Paul', 'Mary')
+    full_artist = clean_song_title(artist)
+    artist_candidates = [full_artist] if full_artist else []
+    artist_candidates += [c for c in split_multilingual(artist) if c not in artist_candidates]
 
     log(f"Candidatos de título: {title_candidates}")
     log(f"Candidatos de artista: {artist_candidates}")
 
     # 1. Tenta encontrar na página do artista
+    checked_slugs = set()
     for a_cand in artist_candidates:
         artist_slug = slugify(a_cand)
-        if not artist_slug:
+        if not artist_slug or artist_slug in checked_slugs:
             continue
+        checked_slugs.add(artist_slug)
 
         artist_url = f"{BASE_URL}/{artist_slug}/"
         log(f"Verificando página do artista: {artist_url}")
@@ -330,34 +430,11 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
             if res and res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 links = soup.find_all("a", href=True)
-
-                for t_cand in title_candidates:
-                    cleaned_t = clean_song_title(t_cand)
-                    title_slug = slugify(cleaned_t)
-
-                    # Busca por title exato ou variações multilíngues nos links
-                    for a_tag in links:
-                        tag_title = a_tag.get("title") or a_tag.get_text()
-                        if not tag_title:
-                            continue
-                        tag_cands = [tag_title, clean_song_title(tag_title)] + split_multilingual(tag_title)
-                        tag_slugs = [slugify(c) for c in tag_cands if c]
-                        tag_lowers = [c.lower() for c in tag_cands if c]
-                        href_lower = a_tag["href"].lower()
-
-                        matched = False
-                        if cleaned_t.lower() in tag_lowers or title_slug in tag_slugs:
-                            matched = True
-                        elif any(len(title_slug) >= 6 and len(ts) >= 6 and title_slug.replace('ou', 'o') == ts.replace('ou', 'o') for ts in tag_slugs):
-                            matched = True
-                        elif href_lower.rstrip("/").endswith(f"/{title_slug}"):
-                            matched = True
-                        elif len(title_slug) >= 6 and title_slug.replace('ou', 'o') in href_lower.replace('ou', 'o'):
-                            matched = True
-
-                        if matched:
-                            log(f"Encontrado link por correspondência: {a_tag['href']} ('{tag_title}')")
-                            return a_tag["href"]
+                best = find_best_song_link(links, title_candidates, song_name)
+                if best:
+                    href, tag_title = best
+                    log(f"Encontrado link por correspondência: {href} ('{tag_title}')")
+                    return href
         except Exception as e:
             log(f"Erro ao acessar {artist_url}: {e}")
 
@@ -393,7 +470,93 @@ def get_translation_suffix(lang: str = "pt") -> str:
     return LANGUAGE_SUFFIXES.get((lang or "").lower().strip(), "traducao.html")
 
 
-def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict[str, str], List[Dict[str, Any]], Optional[str]]:
+def _parse_translation_page(html: str) -> Tuple[Dict[str, str], List[Dict[str, Any]]]:
+    """Extrai os pares (original -> tradução) e os versos ordenados de uma página de tradução."""
+    soup = BeautifulSoup(html, "html.parser")
+    lyrics_dict: Dict[str, str] = {}
+    ordered_verses: List[Dict[str, Any]] = []
+
+    # Procura versos em <span class="verse">
+    verses = soup.find_all("span", class_="verse")
+    log(f"Encontradas {len(verses)} tags <span class='verse'>.")
+
+    if verses:
+        for verse in verses:
+            spans = verse.find_all("span", recursive=False)
+            current_origs: List[str] = []
+            translation_line = ""
+
+            if len(spans) >= 2:
+                translation_line = spans[0].get_text(strip=True)
+                orig_container = spans[1]
+                sub_spans = orig_container.find_all("span")
+                if sub_spans:
+                    for s in sub_spans:
+                        txt = s.get_text(strip=True)
+                        if txt:
+                            lyrics_dict[txt] = translation_line
+                            current_origs.append(txt)
+                else:
+                    orig = orig_container.get_text(strip=True)
+                    if orig:
+                        lyrics_dict[orig] = translation_line
+                        current_origs.append(orig)
+            else:
+                rom = verse.find("span", class_="romanization")
+                if rom:
+                    sub = rom.find_all("span")
+                    rom.extract()
+                    translation_line = verse.get_text(strip=True)
+                    if sub:
+                        for s in sub:
+                            txt = s.get_text(strip=True)
+                            if txt:
+                                lyrics_dict[txt] = translation_line
+                                current_origs.append(txt)
+                    else:
+                        orig = rom.get_text(strip=True)
+                        if orig:
+                            lyrics_dict[orig] = translation_line
+                            current_origs.append(orig)
+
+            if translation_line:
+                ordered_verses.append({
+                    "index": len(ordered_verses),
+                    "translation": translation_line,
+                    "originals": current_origs
+                })
+
+    # Fallback alternativo para páginas antigas com divs separados
+    if not lyrics_dict:
+        log("Tentando extração alternativa em lyric-original e lyric-translation...")
+        lyrics_div = soup.find("div", class_="lyric-original")
+        translation_div = soup.find("div", class_="lyric-translation") or soup.find("div", class_="translation-single")
+        if lyrics_div and translation_div:
+            orig_paragraphs = [p.get_text(separator="\n").split("\n") for p in lyrics_div.find_all("p")]
+            trans_paragraphs = [p.get_text(separator="\n").split("\n") for p in translation_div.find_all("p")]
+            for orig_p, trans_p in zip(orig_paragraphs, trans_paragraphs):
+                for orig_line, trans_line in zip(orig_p, trans_p):
+                    o_clean = orig_line.strip()
+                    t_clean = trans_line.strip()
+                    if o_clean and t_clean:
+                        lyrics_dict[o_clean] = t_clean
+                        ordered_verses.append({
+                            "index": len(ordered_verses),
+                            "translation": t_clean,
+                            "originals": [o_clean]
+                        })
+
+    return lyrics_dict, ordered_verses
+
+
+def _cache_put(key: str, result: TranslationResult):
+    with _translation_cache_lock:
+        if len(_translation_cache) >= _MAX_CACHE_SIZE:
+            _translation_cache.pop(next(iter(_translation_cache)))
+        _translation_cache[key] = result
+
+
+def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fallback: bool = True) -> TranslationResult:
     """
     Obtém a tradução verso a verso da música no Letras.mus.br no idioma escolhido.
     Sufixos suportados:
@@ -401,130 +564,73 @@ def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict
       - fr: traduction-francaise.html
       - en: english.html
       - es: traduccion.html
-    Retorna:
-      - lyrics_dict: { "linha original": "linha traduzida" }
-      - ordered_verses: [{"index": 0, "translation": "...", "originals": [...]}, ...]
-      - translation_url: URL da página de tradução encontrada
+    Se o idioma pedido não existir e allow_pt_fallback=True, usa a tradução em PT
+    (o idioma efetivamente carregado fica em result.lang_used).
+    Resultados definitivos (inclusive "não encontrado") são cacheados; falhas transitórias
+    de rede/bloqueio não, para que a próxima tentativa busque de novo.
     """
-    # Verifica cache primeiro
-    _cache_key = f"{artist.lower().strip()}|||{song_name.lower().strip()}|||{lang.lower().strip()}"
+    lang = (lang or "pt").lower().strip()
+    cache_key = f"{artist.lower().strip()}|||{song_name.lower().strip()}|||{lang}|||{int(allow_pt_fallback)}"
     with _translation_cache_lock:
-        if _cache_key in _translation_cache:
+        if cache_key in _translation_cache:
             log(f"[CACHE] Hit para '{song_name}' ({lang.upper()}) — pulando scraping.")
-            return _translation_cache[_cache_key]
+            return _translation_cache[cache_key]
+
+    _request_state.transient_failure = False
+    result = TranslationResult()
 
     song_path = get_song_url(artist, song_name)
     if not song_path:
         log(f"Música '{song_name}' de '{artist}' NÃO encontrada no Letras.mus.br.")
-        return {}, [], None
+        if not _request_state.transient_failure:
+            _cache_put(cache_key, result)
+        return result
 
+    result.song_found = True
     if not song_path.endswith("/"):
         song_path += "/"
 
-    suffix = get_translation_suffix(lang)
-    url_translation = f"{BASE_URL}{song_path}{suffix}"
-    log(f"Acessando página de tradução ({lang}): {url_translation}")
+    attempts = [(lang, get_translation_suffix(lang))]
+    if allow_pt_fallback and attempts[0][1] != "traducao.html":
+        attempts.append(("pt", "traducao.html"))
 
-    lyrics_dict: Dict[str, str] = {}
-    ordered_verses: List[Dict[str, Any]] = []
-
-    try:
+    for attempt_lang, suffix in attempts:
+        url_translation = f"{BASE_URL}{song_path}{suffix}"
+        result.url = url_translation
+        log(f"Acessando página de tradução ({attempt_lang}): {url_translation}")
         res = fetch_response(url_translation, timeout=8.0)
         status_code = res.status_code if res else 0
         log(f"Status da página de tradução: {status_code}")
-        # Se o idioma alternativo (ex: francês ou espanhol) não existir para esta música, tenta fallback para PT
-        if status_code != 200 and suffix != "traducao.html":
-            log(f"Idioma '{lang}' não disponível (HTTP {status_code}). Tentando fallback para PT (traducao.html)...")
-            url_translation = f"{BASE_URL}{song_path}traducao.html"
-            res = fetch_response(url_translation, timeout=8.0)
-            status_code = res.status_code if res else 0
-            log(f"Status do fallback PT: {status_code}")
+        if status_code != 200:
+            continue
 
-        if not res or status_code != 200:
-            log(f"Página de tradução retornou {status_code}.")
-            return {}, [], url_translation
+        try:
+            lyrics_dict, ordered_verses = _parse_translation_page(res.text)
+        except Exception as e:
+            log(f"Erro ao extrair tradução de {url_translation}: {e}")
+            _mark_transient_failure()
+            continue
 
-        soup = BeautifulSoup(res.text, "html.parser")
+        if ordered_verses or lyrics_dict:
+            result.lyrics_dict = lyrics_dict
+            result.ordered_verses = ordered_verses
+            result.lang_used = attempt_lang
+            log(f"Sucesso! Total de {len(lyrics_dict)} versos carregados ({len(ordered_verses)} versos ordenados) em {attempt_lang.upper()}.")
+            break
 
-        # Procura versos em <span class="verse">
-        verses = soup.find_all("span", class_="verse")
-        log(f"Encontradas {len(verses)} tags <span class='verse'>.")
+    if result.lang_used and result.lang_used != lang:
+        log(f"Idioma '{lang}' não disponível; usando tradução em '{result.lang_used}'.")
 
-        if verses:
-            for verse in verses:
-                spans = verse.find_all("span", recursive=False)
-                current_origs: List[str] = []
-                translation_line = ""
+    if result.lang_used or not _request_state.transient_failure:
+        _cache_put(cache_key, result)
+    return result
 
-                if len(spans) >= 2:
-                    translation_line = spans[0].get_text(strip=True)
-                    orig_container = spans[1]
-                    sub_spans = orig_container.find_all("span")
-                    if sub_spans:
-                        for s in sub_spans:
-                            txt = s.get_text(strip=True)
-                            if txt:
-                                lyrics_dict[txt] = translation_line
-                                current_origs.append(txt)
-                    else:
-                        orig = orig_container.get_text(strip=True)
-                        if orig:
-                            lyrics_dict[orig] = translation_line
-                            current_origs.append(orig)
-                else:
-                    rom = verse.find("span", class_="romanization")
-                    if rom:
-                        sub = rom.find_all("span")
-                        rom.extract()
-                        translation_line = verse.get_text(strip=True)
-                        if sub:
-                            for s in sub:
-                                txt = s.get_text(strip=True)
-                                if txt:
-                                    lyrics_dict[txt] = translation_line
-                                    current_origs.append(txt)
-                        else:
-                            orig = rom.get_text(strip=True)
-                            if orig:
-                                lyrics_dict[orig] = translation_line
-                                current_origs.append(orig)
 
-                if translation_line:
-                    ordered_verses.append({
-                        "index": len(ordered_verses),
-                        "translation": translation_line,
-                        "originals": current_origs
-                    })
-
-        # Fallback alternativo para páginas antigas com divs separados
-        if not lyrics_dict:
-            log("Tentando extração alternativa em lyric-original e lyric-translation...")
-            lyrics_div = soup.find("div", class_="lyric-original")
-            translation_div = soup.find("div", class_="lyric-translation") or soup.find("div", class_="translation-single")
-            if lyrics_div and translation_div:
-                orig_paragraphs = [p.get_text(separator="\n").split("\n") for p in lyrics_div.find_all("p")]
-                trans_paragraphs = [p.get_text(separator="\n").split("\n") for p in translation_div.find_all("p")]
-                for orig_p, trans_p in zip(orig_paragraphs, trans_paragraphs):
-                    for orig_line, trans_line in zip(orig_p, trans_p):
-                        o_clean = orig_line.strip()
-                        t_clean = trans_line.strip()
-                        if o_clean and t_clean:
-                            lyrics_dict[o_clean] = t_clean
-                            ordered_verses.append({
-                                "index": len(ordered_verses),
-                                "translation": t_clean,
-                                "originals": [o_clean]
-                            })
-
-        log(f"Sucesso! Total de {len(lyrics_dict)} versos carregados ({len(ordered_verses)} versos ordenados).")
-
-    except Exception as e:
-        log(f"Erro ao extrair tradução de {url_translation}: {e}")
-
-    # Salva no cache (mesmo se vazio, para não tentar de novo na mesma sessão)
-    with _translation_cache_lock:
-        if len(_translation_cache) >= _MAX_CACHE_SIZE:
-            _translation_cache.pop(next(iter(_translation_cache)))
-        _translation_cache[_cache_key] = (lyrics_dict, ordered_verses, url_translation)
-
-    return lyrics_dict, ordered_verses, url_translation
+def get_translation(artist: str, song_name: str, lang: str = "pt") -> Tuple[Dict[str, str], List[Dict[str, Any]], Optional[str]]:
+    """
+    Compatibilidade: retorna (lyrics_dict, ordered_verses, translation_url).
+      - lyrics_dict: { "linha original": "linha traduzida" }
+      - ordered_verses: [{"index": 0, "translation": "...", "originals": [...]}, ...]
+    """
+    result = fetch_translation(artist, song_name, lang)
+    return result.lyrics_dict, result.ordered_verses, result.url

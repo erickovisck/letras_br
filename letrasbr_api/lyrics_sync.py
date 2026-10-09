@@ -37,11 +37,17 @@ class YTMManager:
             log(f"AVISO: Nao foi possivel inicializar YTMusic: {e}")
             log("Letras sincronizadas do YouTube Music nao estarao disponiveis.")
 
-    def get_timed_lyrics(self, video_id: str, title: Optional[str] = None, artist: Optional[str] = None) -> Optional[List]:
+    def get_timed_lyrics(
+        self,
+        video_id: str,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        duration: Optional[float] = None
+    ) -> Optional[List]:
         """
         Obtém as letras temporizadas do YouTube Music usando ytmusicapi.
         Se o videoId direto não tiver letras, tenta buscar pelo título e artista
-        para pegar a versão oficial da faixa de áudio.
+        para pegar a versão oficial da faixa de áudio (a de duração mais próxima).
         """
         if not self._available:
             log("ytmusicapi indisponivel — retornando None.")
@@ -74,8 +80,9 @@ class YTMManager:
             try:
                 search_results = self.yt.search(query, filter="songs")
                 if search_results:
-                    alt_video_id = search_results[0].get("videoId")
-                    log(f"Versão de áudio alternativa encontrada: videoId='{alt_video_id}' (título: '{search_results[0].get('title')}')")
+                    best = pick_closest_duration(search_results, duration)
+                    alt_video_id = best.get("videoId")
+                    log(f"Versão de áudio alternativa encontrada: videoId='{alt_video_id}' (título: '{best.get('title')}', duração: {best.get('duration_seconds')}s)")
                     if alt_video_id and alt_video_id != video_id:
                         watch_data = self.yt.get_watch_playlist(videoId=alt_video_id)
                         lyrics_browse_id = watch_data.get("lyrics")
@@ -101,6 +108,22 @@ class YTMManager:
         except Exception as e:
             log(f"Erro ao obter get_lyrics: {e}")
             return None
+
+
+def pick_closest_duration(results: List[dict], duration: Optional[float], top_n: int = 5, tolerance: float = 5.0) -> dict:
+    """
+    Entre os primeiros resultados da busca, escolhe o de duração mais próxima da faixa tocando.
+    Sem duração conhecida (ou nenhum dentro da tolerância), mantém o primeiro resultado.
+    """
+    if not duration or duration <= 0:
+        return results[0]
+    timed = [r for r in results[:top_n] if r.get("duration_seconds")]
+    if not timed:
+        return results[0]
+    best = min(timed, key=lambda r: abs(r["duration_seconds"] - duration))
+    if abs(best["duration_seconds"] - duration) > tolerance:
+        return results[0]
+    return best
 
 
 def find_active_line(lines: List, current_time_ms: int) -> Optional[object]:
