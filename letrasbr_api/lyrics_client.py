@@ -3,18 +3,11 @@ Cliente do overlay para busca, tradução e alinhamento de letras em segundo pla
 Inclui cache em memória e invalidação de requisições obsoletas (autoplay/pulo rápido).
 """
 
-import sys
-import os
 from typing import Dict, Optional, Set
 
 from PySide6.QtCore import QThread, Signal
 
-# Assegura caminhos
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-from pipeline import fetch_and_align, LyricsResult
+from .pipeline import fetch_and_align, LyricsResult
 
 
 class LyricsFetchWorker(QThread):

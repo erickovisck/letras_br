@@ -1,0 +1,3 @@
+-r letrasbr_api/requirements.txt
+pytest>=8.0
+pyflakes>=3.0

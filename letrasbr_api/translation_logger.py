@@ -1,7 +1,10 @@
+import logging
 import os
 import threading
 from datetime import datetime
-from typing import List, Any, Optional
+from typing import List, Any
+
+logger = logging.getLogger(__name__)
 
 LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
 LOG_FILE = os.path.join(LOGS_DIR, "sem_traducao.log")
@@ -93,6 +96,6 @@ def log_untranslated_lyrics(
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write("\n".join(lines_to_write) + "\n")
 
-            print(f"[Log] {len(missing_snippets)} trecho(s) sem tradução registrado(s) em logs/sem_traducao.log para '{title}'")
+            logger.info(f"{len(missing_snippets)} trecho(s) sem tradução registrado(s) em logs/sem_traducao.log para '{title}'")
         except Exception as e:
-            print(f"[Log] Erro ao registrar trechos sem tradução: {e}")
+            logger.warning(f"Erro ao registrar trechos sem tradução: {e}")

@@ -1,7 +1,11 @@
 #!/usr/bin/env python
-"""Script de diagnostico do ambiente LetrasBR."""
+"""Script de diagnostico do ambiente LetrasBR. Uso: .venv\\Scripts\\python.exe scripts\\check_env.py"""
 import sys
 import os
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 print("=" * 60)
 print("  LETRASBR — DIAGNOSTICO DO AMBIENTE PYTHON")
@@ -14,7 +18,7 @@ print()
 packages = [
     "ytmusicapi", "PySide6", "fastapi", "uvicorn",
     "httpx", "bs4", "winrt.windows.media.control",
-    "pykakasi", "requests", "difflib"
+    "pykakasi", "requests", "langdetect"
 ]
 
 print("Pacotes necessarios:")
@@ -71,10 +75,7 @@ print()
 # Testa scraper
 print("Teste scraper:")
 try:
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    if current_dir not in sys.path:
-        sys.path.insert(0, current_dir)
-    from scraper import get_translation
+    from letrasbr_api.scraper import get_translation
     d, v, url = get_translation("Queen", "Bohemian Rhapsody", lang="pt")
     print(f"  [OK] {len(d)} versos, {len(v)} ordered_verses")
     print(f"  [OK] URL: {url}")

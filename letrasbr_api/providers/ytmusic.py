@@ -1,14 +1,7 @@
-import sys
-import os
 from typing import List, Optional
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-from providers.base import MusicProviderAdapter, TimedLine, TrackInfo
-from lyrics_sync import YTMManager
+from .base import MusicProviderAdapter, TimedLine, TrackInfo
+from ..lyrics_sync import YTMManager
 
 
 class YouTubeMusicAdapter(MusicProviderAdapter):

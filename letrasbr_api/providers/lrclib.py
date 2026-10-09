@@ -1,9 +1,12 @@
+import logging
 import re
 from typing import List, Optional
 
 import httpx
 
-from providers.base import TimedLine
+from .base import TimedLine
+
+logger = logging.getLogger(__name__)
 
 LRCLIB_URL = "https://lrclib.net/api"
 HEADERS = {"User-Agent": "LetrasBR/3.0 (github.com/erickovisck/letras_br)"}
@@ -11,12 +14,6 @@ HEADERS = {"User-Agent": "LetrasBR/3.0 (github.com/erickovisck/letras_br)"}
 # Tolerância de duração (segundos) para aceitar um resultado da busca aproximada
 DURATION_TOLERANCE = 3.0
 
-
-def log(msg: str):
-    try:
-        print(f"[LRCLIB] {msg}")
-    except Exception:
-        print(f"[LRCLIB] {str(msg).encode('ascii', 'replace').decode('ascii')}")
 
 
 def parse_lrc(lrc_content: str) -> List[TimedLine]:
@@ -108,7 +105,7 @@ def fetch_lrclib_lyrics(
             if res.status_code == 200:
                 lines = parse_lrc(res.json().get("syncedLyrics") or "")
                 if lines:
-                    log(f"✅ {len(lines)} versos sincronizados (busca exata) para '{title}'.")
+                    logger.info(f"✅ {len(lines)} versos sincronizados (busca exata) para '{title}'.")
                     return lines
 
             search_params = {"track_name": title}
@@ -120,10 +117,10 @@ def fetch_lrclib_lyrics(
                 if best:
                     lines = parse_lrc(best["syncedLyrics"])
                     if lines:
-                        log(f"✅ {len(lines)} versos sincronizados (busca aproximada) para '{title}'.")
+                        logger.info(f"✅ {len(lines)} versos sincronizados (busca aproximada) para '{title}'.")
                         return lines
     except Exception as e:
-        log(f"⚠️ Erro ao consultar LRCLIB: {e}")
+        logger.warning(f"⚠️ Erro ao consultar LRCLIB: {e}")
 
-    log(f"Nenhuma letra sincronizada encontrada para '{title}'.")
+    logger.info(f"Nenhuma letra sincronizada encontrada para '{title}'.")
     return None

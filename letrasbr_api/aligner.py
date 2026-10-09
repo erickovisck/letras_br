@@ -1,13 +1,10 @@
 import re
 import difflib
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import List, Dict, Any, Optional, Tuple
 
-try:
-    import pykakasi
-    _kks = pykakasi.kakasi()
-except Exception:
-    _kks = None
+from .text_utils import get_kakasi, is_instrumental, normalize  # noqa: F401 (reexportados)
 
 
 @dataclass
@@ -20,29 +17,6 @@ class AlignedLine:
     # Origem da tradução: "letras" (Letras.mus.br), "auto" (tradução automática),
     # "original" (verso já está no idioma de destino) ou "none" (sem tradução)
     source: str = "letras"
-
-
-def is_instrumental(text: str) -> bool:
-    """Verifica se a linha é apenas instrumental / notas musicais (♪, ♫, etc.) ou vazia."""
-    if not text:
-        return True
-    cleaned = re.sub(r"[\s\(\)\[\]\u2669-\u266f\u266a♫♪♩♬~〜\-–—.]+", "", text).strip().lower()
-    return len(cleaned) == 0 or cleaned in (
-        "instrumental", "solo", "sóinstrumental", "soinstrumental",
-        "soloinstrumental", "instrumentalsolo"
-    )
-
-
-def normalize(text: str) -> str:
-    """Normaliza o texto para comparação."""
-    if not text:
-        return ""
-    text = re.sub(r"[\u2669-\u266f\u266a♫♪♩♬]", "", text).lower()
-    text = re.sub(r"[^\w\s\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]", "", text)
-    return re.sub(r"[\s\u3000]+", " ", text).strip()
-
-
-from functools import lru_cache
 
 
 @lru_cache(maxsize=4096)
@@ -63,9 +37,10 @@ def get_variants(text: str) -> List[str]:
     if kata_to_hira and kata_to_hira not in vars_list:
         vars_list.append(kata_to_hira)
 
-    if _kks:
+    kks = get_kakasi()
+    if kks:
         try:
-            conv = _kks.convert(furigana_exp or text)
+            conv = kks.convert(furigana_exp or text)
             hira = "".join([item["hira"] for item in conv])
             if hira and hira not in vars_list:
                 vars_list.append(hira)

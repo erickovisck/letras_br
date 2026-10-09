@@ -99,15 +99,21 @@ TRADUTOR YT MUSIC/
 │   ├── registrar_menu_iniciar.bat # Cria atalho no Menu Iniciar para pesquisa do Windows
 │   └── registrar_protocolo.bat    # Registra o protocolo letrasbr:// no Registro
 │
-├── letrasbr_api/             # Módulos principais do backend e da interface gráfica
-│   ├── overlay_qt.py         # Interface gráfica PySide6 (Janela flutuante, animação 3D, controles)
-│   ├── media_monitor.py      # Monitor nativo de mídia do Windows (WinRT GSMTC)
-│   ├── lyrics_client.py      # Cliente assíncrono de busca de letras com cancelamento de requests
+├── letrasbr_api/             # Pacote principal (rode com `python -m letrasbr_api`)
+│   ├── app.py                # Ponto de entrada: FastAPI em segundo plano + overlay PySide6
+│   ├── pipeline.py           # Fluxo único: letra sincronizada -> tradução -> alinhamento -> fallback automático
 │   ├── scraper.py            # Raspador de letras e traduções do letras.mus.br
+│   ├── machine_translate.py  # Fallback com Google Tradutor gratuito + detecção de idioma
 │   ├── aligner.py            # Algoritmo de alinhamento temporal verso a verso
-│   ├── config.py             # Gerenciador de leitura/gravação de configurações
+│   ├── providers/            # Fontes de letra sincronizada (YouTube Music, LRCLIB/Spotify)
+│   ├── ui/                   # Interface PySide6 (janela do overlay, letras, configurações, bandeja)
+│   ├── media_monitor.py      # Monitor nativo de mídia do Windows (WinRT GSMTC)
+│   ├── lyrics_client.py      # Busca de letras em segundo plano para o overlay
 │   ├── main.py               # Endpoints da API REST FastAPI
+│   ├── config.py / languages.py / logging_setup.py
 │   └── requirements.txt      # Dependências Python (PySide6, winrt, fastapi, etc.)
+│
+├── tests/                    # Testes pytest (`python -m pytest`; `--network` para os testes online)
 │
 ├── android/                  # Aplicativo Android nativo em Kotlin
 └── extension/                # Extensão Web Chromium Manifest V3 (legada/opcional)
@@ -158,6 +164,18 @@ O executável `LetrasBR.exe` foi desenvolvido para resolver o problema clássico
      ```cmd
      scripts\build_exe.bat
      ```
+
+---
+
+### Rodando os testes
+
+```cmd
+.venv\Scripts\pip.exe install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest              # testes offline
+.venv\Scripts\python.exe -m pytest --network    # também acessa YouTube Music, Letras, LRCLIB e Google
+```
+
+Os logs ficam em `logs/letrasbr.log` (rotativo).
 
 ---
 

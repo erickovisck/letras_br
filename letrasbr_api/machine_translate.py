@@ -4,6 +4,7 @@ e detecção de idioma das letras.
 Usado quando o Letras.mus.br não tem a música, não tem o idioma pedido ou deixa versos sem tradução.
 """
 
+import logging
 import os
 import json
 import time
@@ -11,6 +12,8 @@ import threading
 from typing import Dict, List, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 MAX_CHUNK_CHARS = 4000
 # Tempo (s) que um endpoint fica de fora após ser bloqueado pelo Google (HTTP 429 / captcha)
@@ -30,12 +33,6 @@ try:
 except ImportError:
     _LANGDETECT_AVAILABLE = False
 
-
-def log(msg: str):
-    try:
-        print(f"[AUTO-TRAD] {msg}")
-    except Exception:
-        print(f"[AUTO-TRAD] {str(msg).encode('ascii', 'replace').decode('ascii')}")
 
 
 def detect_language(lines: List[str], min_probability: float = 0.90) -> Optional[str]:
@@ -67,7 +64,7 @@ def _load_cache() -> Dict[str, str]:
         except FileNotFoundError:
             pass
         except Exception as e:
-            log(f"Cache de traduções automáticas ilegível, recriando: {e}")
+            logger.info(f"Cache de traduções automáticas ilegível, recriando: {e}")
     return _cache
 
 
@@ -82,7 +79,7 @@ def _save_cache():
             json.dump(_cache, f, ensure_ascii=False)
         os.replace(tmp, CACHE_FILE)
     except Exception as e:
-        log(f"Erro ao salvar cache de traduções automáticas: {e}")
+        logger.warning(f"Erro ao salvar cache de traduções automáticas: {e}")
 
 
 def _chunk_lines(lines: List[str]) -> List[List[str]]:
@@ -128,26 +125,26 @@ def _translate_chunk(client: httpx.Client, lines: List[str], target: str) -> Opt
         try:
             res = client.post(url, params={**params, "sl": "auto", "tl": target}, data={"q": "\n".join(lines)})
         except httpx.HTTPError as e:
-            log(f"Endpoint '{name}' falhou: {e}")
+            logger.info(f"Endpoint '{name}' falhou: {e}")
             continue
         if res.status_code == 429:
-            log(f"Endpoint '{name}' bloqueado pelo Google (HTTP 429); pausado por {BLOCK_COOLDOWN // 60} min.")
+            logger.info(f"Endpoint '{name}' bloqueado pelo Google (HTTP 429); pausado por {BLOCK_COOLDOWN // 60} min.")
             _blocked_until[name] = time.time() + BLOCK_COOLDOWN
             continue
         if res.status_code != 200:
-            log(f"Endpoint '{name}' retornou HTTP {res.status_code}.")
+            logger.info(f"Endpoint '{name}' retornou HTTP {res.status_code}.")
             continue
         try:
             translated = parse(res.json())
             break
         except Exception as e:
-            log(f"Resposta inesperada do endpoint '{name}': {e}")
+            logger.info(f"Resposta inesperada do endpoint '{name}': {e}")
 
     if translated is None:
         return None
     out = translated.split("\n")
     if len(out) != len(lines):
-        log(f"Quantidade de linhas divergente ({len(out)} != {len(lines)}); bloco descartado.")
+        logger.info(f"Quantidade de linhas divergente ({len(out)} != {len(lines)}); bloco descartado.")
         return None
     return [o.strip() for o in out]
 
@@ -177,7 +174,7 @@ def translate_lines(lines: List[str], target: str) -> Dict[str, str]:
     if not missing:
         return result
 
-    log(f"Traduzindo automaticamente {len(missing)} linha(s) para '{target}'...")
+    logger.info(f"Traduzindo automaticamente {len(missing)} linha(s) para '{target}'...")
     fresh: Dict[str, str] = {}
     try:
         with httpx.Client(timeout=10.0) as client:
@@ -186,7 +183,7 @@ def translate_lines(lines: List[str], target: str) -> Dict[str, str]:
                 if translated:
                     fresh.update(zip(chunk, translated))
     except Exception as e:
-        log(f"Falha na tradução automática: {e}")
+        logger.warning(f"Falha na tradução automática: {e}")
 
     if fresh:
         with _cache_lock:
@@ -194,7 +191,7 @@ def translate_lines(lines: List[str], target: str) -> Dict[str, str]:
             for line, trans in fresh.items():
                 cache[f"{target}|||{line}"] = trans
             _save_cache()
-        log(f"✅ {len(fresh)} linha(s) traduzidas automaticamente.")
+        logger.info(f"✅ {len(fresh)} linha(s) traduzidas automaticamente.")
 
     result.update(fresh)
     return result

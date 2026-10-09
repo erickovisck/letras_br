@@ -1,7 +1,7 @@
 from typing import List, Optional
 
-from providers.base import MusicProviderAdapter, TimedLine, TrackInfo
-from providers.lrclib import fetch_lrclib_lyrics
+from .base import MusicProviderAdapter, TimedLine, TrackInfo
+from .lrclib import fetch_lrclib_lyrics
 
 
 class SpotifyAdapter(MusicProviderAdapter):

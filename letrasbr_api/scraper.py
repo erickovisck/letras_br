@@ -1,3 +1,4 @@
+import logging
 import re
 import json
 import difflib
@@ -8,6 +9,11 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Any
 import httpx
 from bs4 import BeautifulSoup
+
+from .languages import DEFAULT_LANGUAGE, LANGUAGES, normalize_lang
+from .text_utils import to_romaji
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.letras.mus.br"
 HEADERS = {
@@ -87,7 +93,7 @@ def fetch_response(url: str, timeout: float = 8.0) -> Optional[httpx.Response]:
     try:
         res = client.get(url, timeout=timeout)
         if res.status_code == 403:
-            log(f"Status 403 ao acessar {url}. Tentando renovar cookies da sessao...")
+            logger.info(f"Status 403 ao acessar {url}. Tentando renovar cookies da sessao...")
             with _client_lock:
                 try:
                     client.get(BASE_URL, timeout=5.0)
@@ -98,25 +104,11 @@ def fetch_response(url: str, timeout: float = 8.0) -> Optional[httpx.Response]:
             _mark_transient_failure()
         return res
     except Exception as e:
-        log(f"Erro na requisicao para {url}: {e}")
+        logger.warning(f"Erro na requisicao para {url}: {e}")
         _mark_transient_failure()
         return None
 
 
-
-def log(msg: str):
-    try:
-        print(f"[SCRAPER] {msg}")
-    except Exception:
-        safe_msg = str(msg).encode("ascii", "replace").decode("ascii")
-        print(f"[SCRAPER] {safe_msg}")
-
-
-try:
-    import pykakasi
-    _kks = pykakasi.kakasi()
-except Exception:
-    _kks = None
 
 
 def remove_accents(input_str: str) -> str:
@@ -221,16 +213,11 @@ def split_multilingual(text: str) -> List[str]:
 
     # 3. Transliteração Romaji exclusivamente para nomes nativos em japonês
     romaji_parts = []
-    if _kks:
-        for nlp in non_latin_parts + [text_clean]:
-            if is_japanese(nlp):
-                try:
-                    conv = _kks.convert(nlp)
-                    hep = " ".join([item["hepburn"] for item in conv]).strip()
-                    if hep and hep not in latin_parts and hep not in romaji_parts:
-                        romaji_parts.append(hep)
-                except Exception:
-                    pass
+    for nlp in non_latin_parts + [text_clean]:
+        if is_japanese(nlp):
+            hep = to_romaji(nlp)
+            if hep and hep not in latin_parts and hep not in romaji_parts:
+                romaji_parts.append(hep)
 
     # Ordem: 1º Latino / Romaji, 2º Nativo Não-Latino, 3º Texto limpo
     for p in latin_parts + romaji_parts + non_latin_parts:
@@ -249,7 +236,7 @@ def search_letras_fallback(
 ) -> Optional[str]:
     """Busca direta no mecanismo de busca Solr (JSONP) do Letras.mus.br com validação do resultado."""
     try:
-        log(f"Consultando busca do Letras.mus.br para: '{query}'...")
+        logger.info(f"Consultando busca do Letras.mus.br para: '{query}'...")
         url = f"https://solr.sscdn.co/letras/m1/?q={urllib.parse.quote(query)}"
         res = fetch_response(url, timeout=6.0)
         if res and res.status_code == 200:
@@ -263,7 +250,7 @@ def search_letras_fallback(
             # Filtra apenas docs do tipo música (t == '2')
             song_docs = [d for d in docs if d.get("t") == "2" and d.get("dns") and d.get("url")]
             if not song_docs:
-                log(f"Nenhuma música encontrada via busca para '{query}'.")
+                logger.info(f"Nenhuma música encontrada via busca para '{query}'.")
                 return None
 
             # Se informamos títulos esperados, valida que o resultado pertence à mesma faixa
@@ -328,21 +315,21 @@ def search_letras_fallback(
                     # Prefere a versão original (sem remix/live...) mantendo a ordem de relevância da busca
                     _, _, doc = min(matched_docs, key=lambda m: (m[0], m[1]))
                     found_path = f"/{doc.get('dns')}/{doc.get('url')}"
-                    log(f"Busca encontrou correspondência validada: {found_path} ('{doc.get('txt')}' por '{doc.get('art')}')")
+                    logger.info(f"Busca encontrou correspondência validada: {found_path} ('{doc.get('txt')}' por '{doc.get('art')}')")
                     return found_path
 
-                log(f"Nenhum resultado da busca correspondeu aos títulos esperados: {expected_titles}")
+                logger.info(f"Nenhum resultado da busca correspondeu aos títulos esperados: {expected_titles}")
                 return None
 
             # Se não especificou títulos esperados (busca com artista completo), usa o 1º doc
             doc = song_docs[0]
             found_path = f"/{doc.get('dns')}/{doc.get('url')}"
-            log(f"Busca encontrou correspondência direta: {found_path} ('{doc.get('txt')}' por '{doc.get('art')}')")
+            logger.info(f"Busca encontrou correspondência direta: {found_path} ('{doc.get('txt')}' por '{doc.get('art')}')")
             return found_path
 
-        log(f"Nenhuma música encontrada via busca para '{query}'.")
+        logger.info(f"Nenhuma música encontrada via busca para '{query}'.")
     except Exception as e:
-        log(f"Erro na busca do Letras: {e}")
+        logger.warning(f"Erro na busca do Letras: {e}")
     return None
 
 
@@ -411,8 +398,8 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
     artist_candidates = [full_artist] if full_artist else []
     artist_candidates += [c for c in split_multilingual(artist) if c not in artist_candidates]
 
-    log(f"Candidatos de título: {title_candidates}")
-    log(f"Candidatos de artista: {artist_candidates}")
+    logger.info(f"Candidatos de título: {title_candidates}")
+    logger.info(f"Candidatos de artista: {artist_candidates}")
 
     # 1. Tenta encontrar na página do artista
     checked_slugs = set()
@@ -423,7 +410,7 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
         checked_slugs.add(artist_slug)
 
         artist_url = f"{BASE_URL}/{artist_slug}/"
-        log(f"Verificando página do artista: {artist_url}")
+        logger.info(f"Verificando página do artista: {artist_url}")
 
         try:
             res = fetch_response(artist_url, timeout=6.0)
@@ -433,10 +420,10 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
                 best = find_best_song_link(links, title_candidates, song_name)
                 if best:
                     href, tag_title = best
-                    log(f"Encontrado link por correspondência: {href} ('{tag_title}')")
+                    logger.info(f"Encontrado link por correspondência: {href} ('{tag_title}')")
                     return href
         except Exception as e:
-            log(f"Erro ao acessar {artist_url}: {e}")
+            logger.warning(f"Erro ao acessar {artist_url}: {e}")
 
     # 2. Se não achou na página do artista, tenta a busca Solr combinada (artista + música)
     for t_cand in title_candidates:
@@ -455,19 +442,10 @@ def get_song_url(artist: str, song_name: str) -> Optional[str]:
     return None
 
 
-# Mapeamento de idiomas suportados pelo Letras.mus.br e seus sufixos de URL
-LANGUAGE_SUFFIXES = {
-    "pt": "traducao.html",
-    "pt-br": "traducao.html",
-    "fr": "traduction-francaise.html",
-    "en": "english.html",
-    "es": "traduccion.html"
-}
-
-
-def get_translation_suffix(lang: str = "pt") -> str:
-    """Retorna o sufixo da URL para o idioma especificado ('pt', 'fr', 'en', 'es')."""
-    return LANGUAGE_SUFFIXES.get((lang or "").lower().strip(), "traducao.html")
+def get_translation_suffix(lang: str = DEFAULT_LANGUAGE) -> str:
+    """Retorna o sufixo da página de tradução do Letras.mus.br para o idioma (padrão: PT)."""
+    language = LANGUAGES.get(normalize_lang(lang)) or LANGUAGES[DEFAULT_LANGUAGE]
+    return language.letras_suffix
 
 
 def _parse_translation_page(html: str) -> Tuple[Dict[str, str], List[Dict[str, Any]]]:
@@ -478,7 +456,7 @@ def _parse_translation_page(html: str) -> Tuple[Dict[str, str], List[Dict[str, A
 
     # Procura versos em <span class="verse">
     verses = soup.find_all("span", class_="verse")
-    log(f"Encontradas {len(verses)} tags <span class='verse'>.")
+    logger.info(f"Encontradas {len(verses)} tags <span class='verse'>.")
 
     if verses:
         for verse in verses:
@@ -528,7 +506,7 @@ def _parse_translation_page(html: str) -> Tuple[Dict[str, str], List[Dict[str, A
 
     # Fallback alternativo para páginas antigas com divs separados
     if not lyrics_dict:
-        log("Tentando extração alternativa em lyric-original e lyric-translation...")
+        logger.info("Tentando extração alternativa em lyric-original e lyric-translation...")
         lyrics_div = soup.find("div", class_="lyric-original")
         translation_div = soup.find("div", class_="lyric-translation") or soup.find("div", class_="translation-single")
         if lyrics_div and translation_div:
@@ -573,7 +551,7 @@ def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fa
     cache_key = f"{artist.lower().strip()}|||{song_name.lower().strip()}|||{lang}|||{int(allow_pt_fallback)}"
     with _translation_cache_lock:
         if cache_key in _translation_cache:
-            log(f"[CACHE] Hit para '{song_name}' ({lang.upper()}) — pulando scraping.")
+            logger.info(f"[CACHE] Hit para '{song_name}' ({lang.upper()}) — pulando scraping.")
             return _translation_cache[cache_key]
 
     _request_state.transient_failure = False
@@ -581,7 +559,7 @@ def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fa
 
     song_path = get_song_url(artist, song_name)
     if not song_path:
-        log(f"Música '{song_name}' de '{artist}' NÃO encontrada no Letras.mus.br.")
+        logger.info(f"Música '{song_name}' de '{artist}' NÃO encontrada no Letras.mus.br.")
         if not _request_state.transient_failure:
             _cache_put(cache_key, result)
         return result
@@ -597,17 +575,17 @@ def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fa
     for attempt_lang, suffix in attempts:
         url_translation = f"{BASE_URL}{song_path}{suffix}"
         result.url = url_translation
-        log(f"Acessando página de tradução ({attempt_lang}): {url_translation}")
+        logger.info(f"Acessando página de tradução ({attempt_lang}): {url_translation}")
         res = fetch_response(url_translation, timeout=8.0)
         status_code = res.status_code if res else 0
-        log(f"Status da página de tradução: {status_code}")
+        logger.info(f"Status da página de tradução: {status_code}")
         if status_code != 200:
             continue
 
         try:
             lyrics_dict, ordered_verses = _parse_translation_page(res.text)
         except Exception as e:
-            log(f"Erro ao extrair tradução de {url_translation}: {e}")
+            logger.warning(f"Erro ao extrair tradução de {url_translation}: {e}")
             _mark_transient_failure()
             continue
 
@@ -615,11 +593,11 @@ def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fa
             result.lyrics_dict = lyrics_dict
             result.ordered_verses = ordered_verses
             result.lang_used = attempt_lang
-            log(f"Sucesso! Total de {len(lyrics_dict)} versos carregados ({len(ordered_verses)} versos ordenados) em {attempt_lang.upper()}.")
+            logger.info(f"Sucesso! Total de {len(lyrics_dict)} versos carregados ({len(ordered_verses)} versos ordenados) em {attempt_lang.upper()}.")
             break
 
     if result.lang_used and result.lang_used != lang:
-        log(f"Idioma '{lang}' não disponível; usando tradução em '{result.lang_used}'.")
+        logger.info(f"Idioma '{lang}' não disponível; usando tradução em '{result.lang_used}'.")
 
     if result.lang_used or not _request_state.transient_failure:
         _cache_put(cache_key, result)

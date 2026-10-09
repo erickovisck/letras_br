@@ -1,7 +1,10 @@
+import logging
 from typing import Dict, Optional
-from providers.base import MusicProviderAdapter
-from providers.ytmusic import YouTubeMusicAdapter
-from providers.spotify import SpotifyAdapter
+from .base import MusicProviderAdapter
+from .ytmusic import YouTubeMusicAdapter
+from .spotify import SpotifyAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderFactory:
@@ -47,7 +50,7 @@ class ProviderFactory:
 
         adapter = cls._registry.get(normalized)
         if not adapter:
-            print(f"[FACTORY] ⚠️ Provedor '{source}' não reconhecido. Usando 'ytmusic' como fallback.")
+            logger.warning(f"⚠️ Provedor '{source}' não reconhecido. Usando 'ytmusic' como fallback.")
             adapter = cls._registry.get("ytmusic")
 
         return adapter

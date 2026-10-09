@@ -5,7 +5,6 @@ sem necessidade de extensões no navegador.
 """
 
 import asyncio
-import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -192,7 +191,7 @@ class WindowsMediaMonitor(QThread):
                         self._last_artist = ""
                         self.track_changed.emit("", "", "", 0.0)
 
-            except Exception as e:
+            except Exception:
                 self._current_session = None
 
             poll_count += 1

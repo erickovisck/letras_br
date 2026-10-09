@@ -3,14 +3,18 @@ Pipeline único de letras: busca da letra sincronizada -> tradução -> alinhame
 Usado pelo overlay desktop (lyrics_client.py) e pela API (main.py).
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-from aligner import AlignedLine, align_lyrics, is_instrumental, normalize
-from machine_translate import detect_language, translate_lines
-from providers import ProviderFactory, TimedLine, TrackInfo
-from providers.lrclib import fetch_lrclib_lyrics
-from scraper import clean_song_title, fetch_translation, TranslationResult
+from .aligner import AlignedLine, align_lyrics
+from .text_utils import is_instrumental, normalize
+from .machine_translate import detect_language, translate_lines
+from .providers import ProviderFactory, TimedLine, TrackInfo
+from .providers.lrclib import fetch_lrclib_lyrics
+from .scraper import clean_song_title, fetch_translation, TranslationResult
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -22,12 +26,6 @@ class LyricsResult:
     translation_source: str        # "letras" | "auto" | "mixed" | "original" | "none"
     timed_lyrics: List[TimedLine]  # Letra sincronizada bruta (reaproveitada ao trocar de idioma)
 
-
-def log(msg: str):
-    try:
-        print(f"[PIPELINE] {msg}")
-    except Exception:
-        print(f"[PIPELINE] {str(msg).encode('ascii', 'replace').decode('ascii')}")
 
 
 def fetch_timed_lyrics(track: TrackInfo, source: str) -> Tuple[List[TimedLine], str]:
@@ -48,7 +46,7 @@ def fetch_timed_lyrics(track: TrackInfo, source: str) -> Tuple[List[TimedLine], 
         try:
             lines = fetch()
         except Exception as e:
-            log(f"Erro ao buscar letra sincronizada em {name}: {e}")
+            logger.warning(f"Erro ao buscar letra sincronizada em {name}: {e}")
             lines = None
         if lines:
             return list(lines), name
@@ -117,7 +115,7 @@ def _summarize_source(aligned: List[AlignedLine]) -> str:
 
 def _log_untranslated(title: str, artist: str, lang: str, aligned: List[AlignedLine]):
     try:
-        from translation_logger import log_untranslated_lyrics
+        from .translation_logger import log_untranslated_lyrics
         log_untranslated_lyrics(title, artist, lang, [l for l in aligned if l.source != "original"])
     except Exception:
         pass
@@ -149,7 +147,7 @@ def fetch_and_align(
     if not timed_lyrics:
         track = TrackInfo(title=title, artist=artist, album=album, track_id=track_id, duration=duration, source=source)
         timed_lyrics, timing_source = fetch_timed_lyrics(track, source)
-        log(f"Letra sincronizada: {len(timed_lyrics)} linhas via {timing_source}.")
+        logger.info(f"Letra sincronizada: {len(timed_lyrics)} linhas via {timing_source}.")
     if stale():
         return None
 
@@ -157,7 +155,7 @@ def fetch_and_align(
     vocal_texts = [l.text for l in timed_lyrics if not is_instrumental(l.text)]
     detected = detect_language(vocal_texts) if vocal_texts else None
     if detected == lang:
-        log(f"Letra detectada em '{detected}', igual ao idioma de destino: exibindo só o original.")
+        logger.info(f"Letra detectada em '{detected}', igual ao idioma de destino: exibindo só o original.")
         aligned = align_lyrics(timed_lyrics, [])
         for line in aligned:
             if not line.is_instrumental:
@@ -181,7 +179,7 @@ def fetch_and_align(
         aligned = _estimate_timings(translation, duration or 0)
         if aligned:
             timing_source = "estimated"
-            log("Sem letra sincronizada: usando sincronia estimada pela duração.")
+            logger.info("Sem letra sincronizada: usando sincronia estimada pela duração.")
 
     # 5. Fallback automático para os versos sem tradução
     if auto_translate and aligned:

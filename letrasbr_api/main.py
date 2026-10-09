@@ -1,15 +1,9 @@
 import os
-import sys
+import asyncio
 import datetime
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List, Dict, Any
-
-# Configura codificação UTF-8 no Windows para evitar UnicodeEncodeError
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,19 +11,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-# Garante acesso aos módulos internos
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+from .aligner import find_active_aligned_line, AlignedLine
+from .config import get_config, save_config
+from .languages import DEFAULT_LANGUAGE, is_supported, normalize_lang, supported_codes_text
+from .pipeline import fetch_and_align, LyricsResult
+from .providers import ProviderFactory, TimedLine
 
-root_dir = os.path.abspath(os.path.join(current_dir, ".."))
+logger = logging.getLogger(__name__)
 
-from aligner import find_active_aligned_line, AlignedLine
-from pipeline import fetch_and_align, LyricsResult
-from config import get_config, save_config
-from providers import ProviderFactory, TimedLine
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _lyrics_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="lyrics_fetch")
 
 app = FastAPI(title="LetrasBR Tradutor API (Universal)", version="2.1.0")
@@ -64,12 +54,12 @@ class SyncPayload(BaseModel):
     currentTime: float  # em segundos
     duration: Optional[float] = None
     isPaused: Optional[bool] = False
-    lang: Optional[str] = None  # 'pt', 'fr', 'en', 'es'
+    lang: Optional[str] = None  # ver languages.LANGUAGES
     source: Optional[str] = "ytmusic"  # 'ytmusic' ou 'spotify'
 
 
 class LanguagePayload(BaseModel):
-    lang: str  # 'pt', 'fr', 'en', 'es'
+    lang: str  # ver languages.LANGUAGES
 
 
 class PlayerActionPayload(BaseModel):
@@ -86,7 +76,7 @@ class PlaybackState:
         self.track_id: Optional[str] = None
         self.video_id: Optional[str] = None  # Alias para compatibilidade retroativa
         self.source: str = "ytmusic"
-        self.lang: str = get_config().get("lang", "pt")  # Idioma padrão vindo da configuração
+        self.lang: str = normalize_lang(get_config().get("lang", DEFAULT_LANGUAGE))  # Idioma padrão vindo da configuração
         self.timed_lyrics: List[TimedLine] = []
         self.aligned_lyrics: List[AlignedLine] = []
         self.translation_url: Optional[str] = None
@@ -112,7 +102,7 @@ def queue_command(action: str, source: Optional[str] = None):
     target_source = source or state.source or "ytmusic"
     provider = ProviderFactory.get_provider(target_source)
     provider.queue_command(action)
-    safe_print(f"[{now_str()}] 🎮 Comando enviado para o player [{provider.provider_id.upper()}]: {action.upper()}")
+    logger.info(f"🎮 Comando enviado para o player [{provider.provider_id.upper()}]: {action.upper()}")
 
 
 def now_str() -> str:
@@ -124,14 +114,6 @@ def format_timestamp(ms: int) -> str:
     minutes = total_seconds // 60
     seconds = total_seconds % 60
     return f"[{minutes:02d}:{seconds:02d}]"
-
-
-def safe_print(*args, **kwargs):
-    try:
-        print(*args, **kwargs)
-    except Exception:
-        cleaned_args = [str(a).encode("ascii", "replace").decode("ascii") for a in args]
-        print(*cleaned_args, **kwargs)
 
 
 def _apply_result(result: LyricsResult):
@@ -154,13 +136,12 @@ def _do_fetch_lyrics_sync(
 ):
     is_current = lambda: state.fetch_generation == generation
     if not is_current():
-        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto antes do início (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+        logger.info(f"⏹️ Fetch obsoleto antes do início (geração {generation} vs atual {state.fetch_generation}). Descartando.")
         return
 
     provider = ProviderFactory.get_provider(source)
-    active_lang = (lang or state.lang or "pt").lower().strip()
-    safe_print(f"[{now_str()}] 🌐 Idioma: {active_lang.upper()} | Track ID: {track_id or 'n/a'} (gen={generation})")
-    safe_print("=" * 70)
+    active_lang = normalize_lang(lang or state.lang or DEFAULT_LANGUAGE)
+    logger.info(f"🌐 Idioma: {active_lang.upper()} | Track ID: {track_id or 'n/a'} (gen={generation})")
 
     result = fetch_and_align(
         title=title,
@@ -176,13 +157,12 @@ def _do_fetch_lyrics_sync(
 
     # Atribui ao estado apenas se ainda somos a geração atual
     if result is None or not is_current():
-        safe_print(f"[{now_str()}] ⏹️ Fetch obsoleto (geração {generation} vs atual {state.fetch_generation}). Descartando.")
+        logger.info(f"⏹️ Fetch obsoleto (geração {generation} vs atual {state.fetch_generation}). Descartando.")
         return
 
     _apply_result(result)
-    safe_print(f"[{now_str()}] ✅ {len(result.aligned)} versos alinhados (letra: {result.timing_source}, tradução: {result.translation_source}).")
-    safe_print("-" * 70)
-    safe_print(f"[{now_str()}] ⏳ Sincronização ao vivo ativada. Aguardando reprodução...\n")
+    logger.info(f"✅ {len(result.aligned)} versos alinhados (letra: {result.timing_source}, tradução: {result.translation_source}).")
+    logger.info("⏳ Sincronização ao vivo ativada. Aguardando reprodução...")
 
 
 def _reset_state_for_new_track(
@@ -192,7 +172,7 @@ def _reset_state_for_new_track(
 ):
     """Reseta o estado imediatamente quando uma nova faixa é detectada (sem bloquear)."""
     if lang:
-        state.lang = lang.lower().strip()
+        state.lang = normalize_lang(lang)
     state.title = title
     state.artist = artist
     state.album = album
@@ -216,10 +196,8 @@ def _reset_state_for_new_track(
         song_id += f"|||{track_id.strip()}"
     state.song_key = f"{song_id}|||{state.lang.strip()}"
 
-    safe_print("\n" + "=" * 70)
-    safe_print(f"[{now_str()}] NOVA FAIXA [{provider.provider_id.upper()}]: {artist} - {title}")
-    safe_print(f"[{now_str()}] Buscando letras em background... (não bloqueante)")
-    safe_print("=" * 70)
+    logger.info(f"NOVA FAIXA [{provider.provider_id.upper()}]: {artist} - {title}")
+    logger.info("Buscando letras em background... (não bloqueante)")
 
 
 async def _fetch_lyrics_background(
@@ -237,12 +215,12 @@ async def _fetch_lyrics_background(
             )
         )
     except Exception as e:
-        safe_print(f"[{now_str()}] ERRO no fetch de letras em background: {e}")
+        logger.warning(f"ERRO no fetch de letras em background: {e}")
     finally:
         # Só marca como concluído se ainda somos a geração atual
         if state.fetch_generation == generation:
             state.is_fetching = False
-            safe_print(f"[{now_str()}] Letras carregadas! {len(state.aligned_lyrics)} versos alinhados.")
+            logger.info(f"Letras carregadas! {len(state.aligned_lyrics)} versos alinhados.")
 
 
 @app.post("/api/sync")
@@ -255,7 +233,7 @@ async def sync_playback(payload: SyncPayload, request: Request):
     if effective_track_id:
         song_id += f"|||{effective_track_id.strip()}"
 
-    active_lang = (payload.lang or state.lang or "pt").lower().strip()
+    active_lang = normalize_lang(payload.lang or state.lang or DEFAULT_LANGUAGE)
     new_key = f"{song_id}|||{active_lang}"
     is_new_song = (new_key != state.song_key)
 
@@ -332,7 +310,7 @@ async def sync_playback(payload: SyncPayload, request: Request):
 
             # Exibe no terminal formatado conforme solicitado
             ts = format_timestamp(active_line.start_time)
-            safe_print(f"[{now_str()}] {ts} {active_line.original} => {active_line.translation}")
+            logger.info(f"{ts} {active_line.original} => {active_line.translation}")
 
     res = {
         "status": "ok",
@@ -351,14 +329,14 @@ async def sync_playback(payload: SyncPayload, request: Request):
 
 def change_language_internal(new_lang: str):
     """Altera o idioma de tradução, salva na configuração e re-sincroniza a música atual."""
-    new_lang = new_lang.lower().strip()
-    if new_lang not in ["pt", "fr", "en", "es"]:
+    new_lang = normalize_lang(new_lang)
+    if not is_supported(new_lang):
         return False
 
     old_lang = state.lang
     state.lang = new_lang
     save_config({"lang": new_lang})
-    safe_print(f"\n[{now_str()}] 🔄 Alterando idioma de '{old_lang.upper()}' para '{new_lang.upper()}'...")
+    logger.info(f"🔄 Alterando idioma de '{old_lang.upper()}' para '{new_lang.upper()}'...")
 
     if state.title and state.artist:
         provider = ProviderFactory.get_provider(state.source)
@@ -389,7 +367,7 @@ def change_language_internal(new_lang: str):
             state.active_original = active_line.original
             state.active_translation = active_line.translation
             ts = format_timestamp(active_line.start_time)
-            safe_print(f"[{now_str()}] ✅ Tradução atualizada ({new_lang.upper()}): {ts} {active_line.original} => {active_line.translation}")
+            logger.info(f"✅ Tradução atualizada ({new_lang.upper()}): {ts} {active_line.original} => {active_line.translation}")
 
     return True
 
@@ -397,9 +375,9 @@ def change_language_internal(new_lang: str):
 @app.post("/api/language")
 def change_language(payload: LanguagePayload):
     """Altera o idioma de busca da tradução ('pt', 'fr', 'en', 'es') e re-sincroniza a música atual."""
-    new_lang = payload.lang.lower().strip()
+    new_lang = normalize_lang(payload.lang)
     if not change_language_internal(new_lang):
-        return {"status": "error", "message": f"Idioma '{new_lang}' não suportado. Opções válidas: pt, fr, en, es."}
+        return {"status": "error", "message": f"Idioma '{new_lang}' não suportado. Opções válidas: {supported_codes_text()}."}
 
     return {
         "status": "ok",
@@ -419,8 +397,8 @@ def api_get_config():
 def api_set_config(cfg: Dict[str, Any]):
     """Atualiza as configurações (opacidade, tamanho da fonte, idioma, modo, etc.)."""
     if "lang" in cfg and cfg["lang"]:
-        new_lang = str(cfg["lang"]).lower().strip()
-        if new_lang in ["pt", "fr", "en", "es"] and new_lang != state.lang:
+        new_lang = normalize_lang(str(cfg["lang"]))
+        if is_supported(new_lang) and new_lang != state.lang:
             change_language_internal(new_lang)
 
     save_config(cfg)
@@ -459,7 +437,7 @@ def reset_playback_state():
     state.duration_seconds = 0.0
     state.is_fetching = False
     state.fetch_generation += 1
-    safe_print(f"[{now_str()}] ⏹️ Sessão de reprodução encerrada pelo cliente. Estado resetado.")
+    logger.info("⏹️ Sessão de reprodução encerrada pelo cliente. Estado resetado.")
 
 
 @app.post("/api/playback/clear")
@@ -498,7 +476,7 @@ def get_current():
 
 @app.get("/api/health")
 def health():
-    safe_print(f"[{now_str()}] [HEALTH] Verificação de saúde recebida (API OK).")
+    logger.debug("Verificação de saúde recebida (API OK).")
     return {
         "status": "running",
         "service": "letrasbr_api",
@@ -506,9 +484,3 @@ def health():
         "lang": state.lang,
         "time": now_str()
     }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    safe_print(f"[{now_str()}] Iniciando servidor LetrasBR API na porta 8000...")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False, access_log=False)
