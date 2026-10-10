@@ -29,6 +29,8 @@ MAX_CONTEXT_LINES = 4
 MARGIN_X = 16
 GAP = 6
 CONTEXT_ALPHA = 0.42
+NARROW_WIDTH = 420      # Abaixo dessa largura a fonte da letra diminui aos poucos
+MIN_FONT_SCALE = 0.75
 
 
 @dataclass(frozen=True)
@@ -131,7 +133,8 @@ class LyricContainerWidget(QWidget):
 
     def _fonts(self):
         family = self._config.get("fontFamily", "Segoe UI")
-        size = self._config.get("fontSize", 15)
+        # Overlay estreito (ex.: vertical): reduz a fonte para quebrar menos as palavras
+        size = self._config.get("fontSize", 15) * min(1.0, max(MIN_FONT_SCALE, self.width() / NARROW_WIDTH))
         bold = self._config.get("fontBold", True)
         italic = self._config.get("fontItalic", False)
 

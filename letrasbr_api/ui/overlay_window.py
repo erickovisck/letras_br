@@ -11,11 +11,11 @@ import os
 import webbrowser
 from typing import Optional, List
 
-from PySide6.QtCore import Qt, QPoint, QPropertyAnimation, QSize, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QEvent, QPoint, QPropertyAnimation, QSize, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu,
-    QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget
+    QMessageBox, QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget
 )
 
 from .. import track_prefs
@@ -53,6 +53,10 @@ TRANSLATION_SOURCE_LABELS = {
 OFFSET_STEP_MS = 250
 PANEL_HEIGHT = 220
 AUTO_HIDE_DELAY_MS = 1500
+MIN_WIDTH = 200   # Estreito o bastante para um overlay vertical; a barra superior se adapta
+MIN_HEIGHT = 80
+BRAND_TEXT = "⠿ LetrasBR"
+STATUS_MIN_WIDTH = 110  # Espaço reservado ao título antes de manter itens secundários na barra
 
 
 def format_time_str(seconds: float) -> str:
@@ -72,6 +76,35 @@ class ClickableLabel(QLabel):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
             event.accept()
+
+
+class ElidedLabel(ClickableLabel):
+    """Rótulo que corta o texto com "…" em vez de impor a própria largura à janela."""
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setText(text)
+
+    def setText(self, text: str):
+        self._full_text = text
+        self._refresh()
+
+    def text(self) -> str:
+        return self._full_text
+
+    def _refresh(self):
+        super().setText(self.fontMetrics().elidedText(self._full_text, Qt.ElideRight, max(0, self.width())))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._refresh()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.FontChange, QEvent.StyleChange):
+            self._refresh()
 
 
 class ResizeGripLabel(QLabel):
@@ -95,8 +128,8 @@ class ResizeGripLabel(QLabel):
     def mouseMoveEvent(self, event):
         if self._dragging:
             delta = event.globalPosition().toPoint() - self._start_pos
-            new_w = max(380, self._start_size.width() + delta.x())
-            new_h = max(80, self._start_size.height() + delta.y())
+            new_w = max(MIN_WIDTH, self._start_size.width() + delta.x())
+            new_h = max(MIN_HEIGHT, self._start_size.height() + delta.y())
             self.window.resize(new_w, new_h)
             event.accept()
 
@@ -154,8 +187,8 @@ class LyricsOverlayQt(QWidget):
 
         x = self.config.get("x", 100)
         y = self.config.get("y", 100)
-        w = max(400, self.config.get("width", 650))
-        h = max(90, self.config.get("height", 115))
+        w = max(MIN_WIDTH, self.config.get("width", 650))
+        h = max(MIN_HEIGHT, self.config.get("height", 115))
         self.setGeometry(x, y, w, h)
 
         if self.media_monitor:
@@ -201,7 +234,7 @@ class LyricsOverlayQt(QWidget):
         top_layout.setContentsMargins(4, 2, 4, 2)
         top_layout.setSpacing(6)
 
-        self.lbl_grip = QLabel("⠿ LetrasBR", self.top_bar)
+        self.lbl_grip = QLabel(BRAND_TEXT, self.top_bar)
         top_layout.addWidget(self.lbl_grip)
 
         self.btn_prev = self._icon_button(lambda: self.send_media_cmd("previous"))
@@ -249,7 +282,7 @@ class LyricsOverlayQt(QWidget):
         self.lbl_source_icon.setScaledContents(True)
         self.lbl_source_icon.setVisible(False)
         status_layout.addWidget(self.lbl_source_icon)
-        self.lbl_status = ClickableLabel("Aguardando reprodução no Windows (YouTube Music / Spotify)...", self.status_container)
+        self.lbl_status = ElidedLabel("Aguardando reprodução no Windows (YouTube Music / Spotify)...", self.status_container)
         self.lbl_status.setCursor(Qt.PointingHandCursor)
         self.lbl_status.clicked.connect(self._show_song_menu)
         status_layout.addWidget(self.lbl_status, 1)
@@ -264,6 +297,20 @@ class LyricsOverlayQt(QWidget):
             top_layout.addWidget(btn)
 
         container_layout.addWidget(self.top_bar)
+
+        # Ordem em que os itens da barra somem quando o overlay fica estreito (o título é cortado com "…")
+        self._fit_groups = [
+            [self.timeline_slider],
+            [self.lbl_grip],  # Fica só o "⠿" de arrastar
+            [self.lbl_time],
+            [self.btn_offset_minus, self.lbl_offset, self.btn_offset_plus, self.sep],
+            [self.btn_prev, self.btn_next],
+            [self.btn_minimize],
+            [self.btn_panel],
+        ]
+        self._fit_hidden = 0
+        # Sem isso, a largura natural da barra vira o mínimo da janela e ela não deixa estreitar
+        self.top_bar.setMinimumWidth(1)
 
         # --- LETRAS ---
         self.lyric_widget = LyricContainerWidget(self.container)
@@ -369,6 +416,32 @@ class LyricsOverlayQt(QWidget):
         self.btn_settings.setToolTip("Configurações e Temas")
         self._update_play_button()
         self._update_lock_button()
+        self._fit_top_bar()
+
+    def _fit_top_bar(self):
+        """Esconde os itens menos importantes da barra superior até ela caber na largura atual."""
+        margins = self.container.layout().contentsMargins()
+        available = self.width() - margins.left() - margins.right()
+        layout = self.top_bar.layout()
+        hidden = 0
+        while True:
+            self._apply_fit(hidden)
+            layout.invalidate()
+            if hidden >= len(self._fit_groups) or layout.minimumSize().width() + STATUS_MIN_WIDTH <= available:
+                break
+            hidden += 1
+        self._fit_hidden = hidden
+
+    def _apply_fit(self, hidden: int):
+        for i, widgets in enumerate(self._fit_groups):
+            shown = i >= hidden
+            for widget in widgets:
+                if widget is self.lbl_grip:
+                    widget.setText(BRAND_TEXT if shown else BRAND_TEXT.split()[0])
+                elif widget is self.lbl_offset:
+                    widget.setVisible(shown and bool(self._offset_ms))
+                else:
+                    widget.setVisible(shown)
 
     def _update_play_button(self):
         self.btn_play.setIcon(self._icon_play if self.is_paused else self._icon_pause)
@@ -541,7 +614,7 @@ class LyricsOverlayQt(QWidget):
 
     def _update_offset_label(self):
         self.lbl_offset.setText(format_offset(self._offset_ms) if self._offset_ms else "")
-        self.lbl_offset.setVisible(bool(self._offset_ms))
+        self._fit_top_bar()  # Mostra o rótulo do ajuste se couber
 
     # ------------------------------------------------------ Menu da música
 
@@ -777,6 +850,8 @@ class LyricsOverlayQt(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if event.size().width() != event.oldSize().width():
+            self._fit_top_bar()
         # Modo compacto e painel da letra completa são temporários: não alteram o tamanho salvo
         if not self.is_compact and not self.lyrics_panel.isVisible():
             self.config["width"] = self.width()
