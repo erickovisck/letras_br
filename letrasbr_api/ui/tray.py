@@ -50,6 +50,7 @@ def create_tray_icon(window) -> QSystemTrayIcon:
     # Única forma (além do atalho) de destravar quando o overlay deixa os cliques passarem
     tray_icon.lock_action = add_action("Travar / Destravar overlay (Ctrl+Alt+L)", window.toggle_lock)
     add_action("Configurações", window.open_settings)
+    add_action("Ver letra no celular...", window.show_mobile_address)
     menu.addSeparator()
     add_action("Play / Pause", lambda: window.send_media_cmd("play_pause"))
     add_action("Próxima Música", lambda: window.send_media_cmd("next"))

@@ -6,6 +6,7 @@ Uso: `python run_api.py` ou `python -m letrasbr_api` (adicione --no-overlay para
 import os
 import sys
 import time
+import socket
 import logging
 import threading
 
@@ -25,6 +26,16 @@ def _ensure_std_streams():
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
+def lan_ip() -> str:
+    """IP do PC na rede local (para abrir o /mobile no celular). Não envia nenhum pacote."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
 
 
 def _start_api_server():
@@ -51,7 +62,8 @@ def main(argv=None):
 
     logger.info("LetrasBR Desktop — PySide6 + Windows Media Control (GSMTC)")
     _start_api_server()
-    logger.info(f"API disponível em http://127.0.0.1:{API_PORT} (mobile: /mobile)")
+    logger.info(f"API disponível em http://127.0.0.1:{API_PORT}")
+    logger.info(f"No celular (mesma rede Wi-Fi): http://{lan_ip()}:{API_PORT}/mobile")
 
     if "--no-overlay" in argv:
         logger.info("Modo headless (sem overlay). Pressione Ctrl+C para sair.")

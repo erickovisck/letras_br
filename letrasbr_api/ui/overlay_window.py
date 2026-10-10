@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from .. import track_prefs
 from ..aligner import AlignedLine, find_active_index
 from ..config import DYNAMIC_THEME_NAME, get_config, save_config
+from ..desktop_bridge import bridge
 from ..lyrics_client import LyricsClient
 from ..media_monitor import WindowsMediaMonitor
 from ..pipeline import LyricsResult
@@ -108,6 +109,8 @@ class ResizeGripLabel(QLabel):
 class LyricsOverlayQt(QWidget):
     """Janela principal do overlay flutuante."""
 
+    language_requested = Signal(str)  # Emitido da thread da API (troca de idioma pelo /mobile)
+
     def __init__(self, media_monitor: Optional[WindowsMediaMonitor] = None, parent=None):
         super().__init__(parent)
         self.config = get_config()
@@ -160,6 +163,10 @@ class LyricsOverlayQt(QWidget):
             self.media_monitor.playback_tick.connect(self._on_playback_tick)
             self.media_monitor.source_changed.connect(self._on_source_changed)
             self.media_monitor.cover_changed.connect(self._on_cover_changed)
+            # Publica o estado para o /mobile e recebe dele comandos de mídia e troca de idioma
+            self.language_requested.connect(self._on_language_requested)
+            bridge.attach(self.media_monitor.send_command, self.language_requested.emit)
+        bridge.set_lang(self.config.get("lang", "pt"))
 
         self.tray_icon = create_tray_icon(self)
 
@@ -466,6 +473,7 @@ class LyricsOverlayQt(QWidget):
             self._save_timer.stop()
             save_config(self.config)
         self.hotkeys.unregister_all()
+        bridge.detach()
         self.tray_icon.hide()
         if self.media_monitor:
             self.media_monitor.stop()
@@ -488,6 +496,16 @@ class LyricsOverlayQt(QWidget):
         self.resize(self.width(), self.height() + (PANEL_HEIGHT if opening else -PANEL_HEIGHT))
         if opening:
             self.lyrics_panel.set_active(self.lyric_widget.active_index())
+
+    def show_mobile_address(self):
+        from ..app import API_PORT, lan_ip
+        url = f"http://{lan_ip()}:{API_PORT}/mobile"
+        QApplication.clipboard().setText(url)
+        QMessageBox.information(
+            self, "Ver letra no celular",
+            f"Com o celular na mesma rede Wi-Fi, abra no navegador:\n\n{url}\n\n"
+            "(endereço copiado). Lá dá para pausar, pular, trocar o idioma e abrir a janela flutuante (PiP).",
+        )
 
     def send_media_cmd(self, action: str):
         if self.media_monitor:
@@ -573,6 +591,7 @@ class LyricsOverlayQt(QWidget):
     @Slot(str)
     def _on_source_changed(self, source: str):
         self._current_source = source
+        bridge.set_source(source)
         self._update_source_icon_display(source)
 
     def _update_source_icon_display(self, source: str):
@@ -607,6 +626,8 @@ class LyricsOverlayQt(QWidget):
         self.lyrics_panel.set_lines([])
         self._offset_ms = track_prefs.get_offset_ms(artist, title) if title else 0
         self._update_offset_label()
+        bridge.set_track(title, artist, album, duration, self._current_source,
+                         self.config.get("lang", "pt"), self._offset_ms)
 
         if not title:
             self.lbl_source_icon.setVisible(False)
@@ -635,6 +656,10 @@ class LyricsOverlayQt(QWidget):
         self.aligned_lyrics = result.aligned if result else []
         self.lyric_widget.set_lines(self.aligned_lyrics)
         self.lyrics_panel.set_lines(self.aligned_lyrics)
+        if result:
+            bridge.set_lyrics(self.aligned_lyrics, result.translation_url, result.translation_source, result.timing_source)
+        else:
+            bridge.set_lyrics([])
         if not self.aligned_lyrics:
             self.lbl_source_icon.setVisible(False)
             self.lbl_status.setText(f"⚠️ {self.current_artist} - {self.current_title} (sem sincronização)")
@@ -663,6 +688,7 @@ class LyricsOverlayQt(QWidget):
         self._update_active_line()
 
     def _on_lyrics_error(self, req_id: int, err_msg: str):
+        bridge.set_lyrics([])
         self.lbl_source_icon.setVisible(False)
         self.lbl_status.setText("⚠️ Tradução não encontrada")
         self.lyric_widget.set_message("Tradução não disponível para esta faixa.", animated=False)
@@ -684,6 +710,7 @@ class LyricsOverlayQt(QWidget):
                 self.lbl_time.setText(format_time_str(current_seconds))
 
         self._update_active_line()
+        bridge.set_position(current_seconds, duration, is_paused, self.lyric_widget.active_index(), self._offset_ms)
 
     def _update_active_line(self):
         if not self.aligned_lyrics:
@@ -707,6 +734,7 @@ class LyricsOverlayQt(QWidget):
     def _on_config_updated(self, new_cfg: dict):
         old_cfg = self.config
         self.config = new_cfg
+        bridge.set_lang(new_cfg.get("lang", "pt"))
         if new_cfg.get("theme") == DYNAMIC_THEME_NAME and self._cover_theme:
             self.config.update(self._cover_theme)
         self._apply_current_style()
@@ -715,6 +743,12 @@ class LyricsOverlayQt(QWidget):
         translation_changed = any(old_cfg.get(k) != new_cfg.get(k) for k in ("lang", "autoTranslate"))
         if translation_changed and self.current_title and self.current_artist:
             self._on_track_changed(self.current_title, self.current_artist, self.current_album, self.current_duration)
+
+    @Slot(str)
+    def _on_language_requested(self, lang: str):
+        """Idioma trocado pelo celular (a API já gravou na configuração)."""
+        if lang != self.config.get("lang"):
+            self._on_config_updated({**self.config, "lang": lang})
 
     # ------------------------------------------------- Arraste e tamanho
 

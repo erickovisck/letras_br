@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import datetime
 import logging
@@ -11,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from .aligner import find_active_aligned_line, AlignedLine
+from .aligner import find_active_aligned_line, find_active_index, AlignedLine
 from .config import get_config, save_config
+from .desktop_bridge import REMOTE_CLIENT_TIMEOUT_S, bridge
 from .languages import DEFAULT_LANGUAGE, is_supported, normalize_lang, supported_codes_text
 from .pipeline import fetch_and_align, LyricsResult
 from .providers import ProviderFactory, TimedLine
@@ -92,6 +94,7 @@ class PlaybackState:
         self.duration_seconds: float = 0.0
         self.is_fetching: bool = False
         self.fetch_generation: int = 0  # Incrementa a cada nova faixa para cancelar fetches anteriores
+        self.last_remote_sync: float = 0.0  # time.monotonic() do último POST /api/sync
 
 
 state = PlaybackState()
@@ -103,6 +106,11 @@ def queue_command(action: str, source: Optional[str] = None):
     provider = ProviderFactory.get_provider(target_source)
     provider.queue_command(action)
     logger.info(f"🎮 Comando enviado para o player [{provider.provider_id.upper()}]: {action.upper()}")
+
+
+def desktop_is_active() -> bool:
+    """O overlay desktop é a fonte do estado, salvo quando a extensão/app Android está enviando /api/sync."""
+    return bridge.attached and time.monotonic() - state.last_remote_sync > REMOTE_CLIENT_TIMEOUT_S
 
 
 def now_str() -> str:
@@ -225,6 +233,7 @@ async def _fetch_lyrics_background(
 
 @app.post("/api/sync")
 async def sync_playback(payload: SyncPayload, request: Request):
+    state.last_remote_sync = time.monotonic()
     effective_track_id = payload.trackId or payload.videoId
     effective_source = payload.source or "ytmusic"
     provider = ProviderFactory.get_provider(effective_source)
@@ -336,6 +345,7 @@ def change_language_internal(new_lang: str):
     old_lang = state.lang
     state.lang = new_lang
     save_config({"lang": new_lang})
+    bridge.request_language(new_lang)  # O overlay desktop recarrega a tradução na própria thread
     logger.info(f"🔄 Alterando idioma de '{old_lang.upper()}' para '{new_lang.upper()}'...")
 
     if state.title and state.artist:
@@ -411,6 +421,8 @@ def api_player_action(payload: PlayerActionPayload):
     action = payload.action.lower().strip()
     if action not in ["play_pause", "next", "previous", "toggle_play"]:
         return {"status": "error", "message": f"Ação '{action}' desconhecida. Use 'play_pause', 'next' ou 'previous'."}
+    if desktop_is_active() and bridge.send_command(action):
+        return {"status": "ok", "action": action, "source": "desktop"}
     queue_command(action, source=payload.source)
     return {"status": "ok", "action": action, "source": payload.source or state.source}
 
@@ -451,6 +463,12 @@ def api_playback_clear():
 
 @app.get("/api/current")
 def get_current():
+    if desktop_is_active():
+        return bridge.snapshot()
+
+    lines = state.aligned_lyrics
+    index = find_active_index(lines, state.current_time_ms) if lines else -1
+    upcoming = lines[index + 1] if 0 <= index + 1 < len(lines) else None
     return {
         "title": state.title,
         "artist": state.artist,
@@ -463,14 +481,24 @@ def get_current():
         "currentSeconds": state.current_seconds,
         "durationSeconds": state.duration_seconds,
         "isPaused": state.is_paused,
+        "isFetching": state.is_fetching,
+        "activeIndex": index,
         "activeOriginal": state.active_original,
         "activeTranslation": state.active_translation,
+        "activeLineSource": lines[index].source if index >= 0 else "none",
+        "nextOriginal": upcoming.original if upcoming else "",
+        "nextTranslation": upcoming.translation if upcoming else "",
+        "nextLineSource": upcoming.source if upcoming else "none",
         "translationUrl": state.translation_url,
         "hasTimedLyrics": len(state.timed_lyrics) > 0,
         "hasTranslation": state.translation_source in ("letras", "auto", "mixed"),
         "translationSource": state.translation_source,
         "timingSource": state.timing_source,
-        "hasAlignedLyrics": len(state.aligned_lyrics) > 0,
+        "hasAlignedLyrics": len(lines) > 0,
+        "lyricsVersion": state.fetch_generation,
+        "offsetMs": 0,
+        "origin": "remote",
+        "updatedAt": time.time(),
     }
 
 
@@ -482,5 +510,6 @@ def health():
         "service": "letrasbr_api",
         "source": state.source,
         "lang": state.lang,
+        "desktop": bridge.attached,
         "time": now_str()
     }

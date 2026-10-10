@@ -226,7 +226,10 @@ Caso você utilize iOS ou não queira instalar o APK no Android:
    ```text
    http://<IP-DO-SEU-PC>:8000/mobile
    ```
+   O endereço exato aparece no menu da bandeja (**Ver letra no celular...**, já copiado) e no log ao iniciar.
 3. Toque no botão **📺 PiP** para exibir as legendas sincronizadas em uma janela flutuante nativa do sistema móvel.
+
+Com o LetrasBR Desktop aberto, a página mostra a mesma música do overlay (verso atual, próxima linha e o marcador `≈` de tradução automática). Os botões ⏮ ⏯ ⏭ controlam o player do PC, e trocar o idioma no celular troca também no desktop.
 
 ---
 

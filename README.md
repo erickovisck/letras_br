@@ -226,7 +226,10 @@ If you use iOS or prefer not to install the Android APK:
    ```text
    http://<YOUR-PC-IP>:8000/mobile
    ```
+   The exact address is shown in the tray menu (**Ver letra no celular...**, already copied) and in the startup log.
 3. Tap **📺 PiP** to launch floating synchronized subtitles in a native Picture-in-Picture window.
+
+With LetrasBR Desktop running, the page mirrors the overlay (current line, next line and the `≈` auto-translation marker). The ⏮ ⏯ ⏭ buttons control the PC player, and changing the language on the phone changes it on the desktop too.
 
 ---
 
