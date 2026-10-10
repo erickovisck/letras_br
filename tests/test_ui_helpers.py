@@ -31,9 +31,21 @@ def test_cover_theme_follows_vibrant_color():
     assert luminance(theme["origColor"]) > 0.6      # texto claro e legível
 
 
-def test_grayscale_cover_gets_neutral_theme():
+def test_black_and_white_cover_with_small_colored_detail_stays_black_and_white():
+    image = QImage(QImage.fromData(image_bytes("#f0f0f0", accent="#202020")))
+    for x in range(2):
+        for y in range(2):
+            image.setPixelColor(x, y, QColor("#e11d48"))  # selo vermelho minúsculo no canto
+    data = QByteArray()
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.WriteOnly)
+    image.save(buffer, "PNG")
+    assert theme_from_cover(bytes(data))["transColor"] == "#ffffff"
+
+
+def test_black_and_white_cover_gets_black_and_white_theme():
     theme = theme_from_cover(image_bytes("#808080", accent="#202020"))
-    assert theme is not None and theme["bgColor"] == "#1c1c1c"
+    assert theme == {"bgColor": "#0d0d0d", "origColor": "#b3b3b3", "transColor": "#ffffff"}
 
 
 def test_invalid_image_has_no_theme():

@@ -6,6 +6,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 
 HUE_BUCKETS = 12
+MIN_COLOR_SHARE = 0.03  # Abaixo disso (fração da capa com cor), a capa é tratada como preto e branco
+MONOCHROME_THEME = {"bgColor": "#0d0d0d", "origColor": "#b3b3b3", "transColor": "#ffffff"}
 
 
 def dominant_vibrant_color(image: QImage) -> Optional[QColor]:
@@ -26,7 +28,7 @@ def dominant_vibrant_color(image: QImage) -> Optional[QColor]:
             bucket[3] += c.blueF() * weight
 
     weight, r, g, b = max(buckets, key=lambda bk: bk[0])
-    if weight < 1.0:  # pouquíssimos pixels coloridos
+    if weight < MIN_COLOR_SHARE * small.width() * small.height():  # só detalhes coloridos (ex.: um selo)
         return None
     return QColor.fromRgbF(r / weight, g / weight, b / weight)
 
@@ -37,8 +39,8 @@ def theme_from_cover(image_bytes: bytes) -> Optional[Dict[str, str]]:
     if image.isNull():
         return None
     base = dominant_vibrant_color(image)
-    if base is None:  # capa acinzentada: paleta neutra, para não ficar com as cores da música anterior
-        base = QColor.fromHsvF(0.6, 0.0, 0.5)
+    if base is None:  # capa preto e branco (ou acinzentada): tema preto e branco também
+        return dict(MONOCHROME_THEME)
     hue = base.hsvHueF()
     sat = base.hsvSaturationF()
     return {
