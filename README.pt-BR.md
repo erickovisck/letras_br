@@ -99,15 +99,21 @@ TRADUTOR YT MUSIC/
 │   ├── registrar_menu_iniciar.bat # Cria atalho no Menu Iniciar para pesquisa do Windows
 │   └── registrar_protocolo.bat    # Registra o protocolo letrasbr:// no Registro
 │
-├── letrasbr_api/             # Módulos principais do backend e da interface gráfica
-│   ├── overlay_qt.py         # Interface gráfica PySide6 (Janela flutuante, animação 3D, controles)
-│   ├── media_monitor.py      # Monitor nativo de mídia do Windows (WinRT GSMTC)
-│   ├── lyrics_client.py      # Cliente assíncrono de busca de letras com cancelamento de requests
+├── letrasbr_api/             # Pacote principal (rode com `python -m letrasbr_api`)
+│   ├── app.py                # Ponto de entrada: FastAPI em segundo plano + overlay PySide6
+│   ├── pipeline.py           # Fluxo único: letra sincronizada -> tradução -> alinhamento -> fallback automático
 │   ├── scraper.py            # Raspador de letras e traduções do letras.mus.br
+│   ├── machine_translate.py  # Fallback com Google Tradutor gratuito + detecção de idioma
 │   ├── aligner.py            # Algoritmo de alinhamento temporal verso a verso
-│   ├── config.py             # Gerenciador de leitura/gravação de configurações
+│   ├── providers/            # Fontes de letra sincronizada (YouTube Music, LRCLIB/Spotify)
+│   ├── ui/                   # Interface PySide6 (janela do overlay, letras, configurações, bandeja)
+│   ├── media_monitor.py      # Monitor nativo de mídia do Windows (WinRT GSMTC)
+│   ├── lyrics_client.py      # Busca de letras em segundo plano para o overlay
 │   ├── main.py               # Endpoints da API REST FastAPI
+│   ├── config.py / languages.py / logging_setup.py
 │   └── requirements.txt      # Dependências Python (PySide6, winrt, fastapi, etc.)
+│
+├── tests/                    # Testes pytest (`python -m pytest`; `--network` para os testes online)
 │
 ├── android/                  # Aplicativo Android nativo em Kotlin
 └── extension/                # Extensão Web Chromium Manifest V3 (legada/opcional)
@@ -161,19 +167,36 @@ O executável `LetrasBR.exe` foi desenvolvido para resolver o problema clássico
 
 ---
 
+### Rodando os testes
+
+```cmd
+.venv\Scripts\pip.exe install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest              # testes offline
+.venv\Scripts\python.exe -m pytest --network    # também acessa YouTube Music, Letras, LRCLIB e Google
+```
+
+Os logs ficam em `logs/letrasbr.log` (rotativo).
+
+---
+
 ## 🎨 Interface Visual & Personalização
 
 O overlay flutuante pode ser completamente customizado para combinar com seu papel de parede ou tema de trabalho:
 
 - **Arrastar e Posicionar:** Clique e arraste na barra superior escura para posicionar a janela onde preferir.
-- **Redimensionar:** Clique e arraste o ícone `⇲` no canto inferior direito.
+- **Redimensionar:** Clique e arraste o ícone `⇲` no canto inferior direito. Quanto mais alto o overlay, mais versos anteriores/seguintes aparecem em volta do atual.
 - **Avançar / Retroceder Música:** Use o slider de progresso localizado no topo ao lado dos botões de reprodução.
-- **Menu de Configurações (`⚙️`):**
-  - Ajuste a cor de fundo e a transparência em tempo real.
-  - Altere a cor do verso original e da tradução.
-  - Escolha qualquer fonte do sistema e ajuste o tamanho com precisão nos botões `[−]` e `[+]`.
-  - Ative Negrito ou Itálico.
-- **Bandeja do Sistema:** Clique com o botão direito no ícone do LetrasBR ao lado do relógio do Windows para atalhos rápidos ou para fechar.
+- **Letra completa (`≡`):** Abre um painel com a letra inteira; clique num verso para pular até ele.
+- **Sincronia por música:** Botões `−`/`+` (ou teclas `[` `]`, `0` para zerar) adiantam/atrasam a letra em 250 ms. O ajuste fica salvo para aquela música.
+- **Música errada?** Clique no status da música para abrir a página no Letras, colar o link correto da tradução ou recarregar.
+- **Controles que somem sozinhos:** As barras desaparecem quando o mouse sai do overlay.
+- **Cadeado (click-through):** Com o overlay travado, os cliques passam para a janela de trás. Destrave com `Ctrl+Alt+L` ou pelo menu da bandeja.
+- **Menu de Configurações (`⚙️`)**, em abas, com pré-visualização ao vivo (Cancelar desfaz):
+  - Temas prontos, incluindo o **Dinâmico**, que tira as cores da capa do álbum e a fonte do gênero da música (MusicBrainz + iTunes; fontes do Windows/Office, com negrito e espaçamento por estilo).
+  - Cor de fundo, transparência, cor do verso original e da tradução.
+  - Fonte, tamanho, Negrito/Itálico e efeito no texto (sombra ou contorno) para fundos transparentes.
+  - Transição entre versos (3D, rolagem, deslizar, esmaecer ou nenhuma) e sua duração.
+- **Bandeja do Sistema:** Clique com o botão direito no ícone do LetrasBR ao lado do relógio do Windows para atalhos rápidos, travar/destravar ou fechar.
 
 ---
 
@@ -203,7 +226,10 @@ Caso você utilize iOS ou não queira instalar o APK no Android:
    ```text
    http://<IP-DO-SEU-PC>:8000/mobile
    ```
+   O endereço exato aparece no menu da bandeja (**Ver letra no celular...**, já copiado) e no log ao iniciar.
 3. Toque no botão **📺 PiP** para exibir as legendas sincronizadas em uma janela flutuante nativa do sistema móvel.
+
+Com o LetrasBR Desktop aberto, a página mostra a mesma música do overlay (verso atual, próxima linha e o marcador `≈` de tradução automática). Os botões ⏮ ⏯ ⏭ controlam o player do PC, e trocar o idioma no celular troca também no desktop.
 
 ---
 

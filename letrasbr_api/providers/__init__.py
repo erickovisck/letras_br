@@ -1,7 +1,7 @@
-from providers.base import MusicProviderAdapter, TimedLine, TrackInfo
-from providers.ytmusic import YouTubeMusicAdapter
-from providers.spotify import SpotifyAdapter
-from providers.factory import ProviderFactory
+from .base import MusicProviderAdapter, TimedLine, TrackInfo
+from .ytmusic import YouTubeMusicAdapter
+from .spotify import SpotifyAdapter
+from .factory import ProviderFactory
 
 __all__ = [
     "MusicProviderAdapter",

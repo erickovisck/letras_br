@@ -154,6 +154,22 @@ body {
   transition: all 0.2s ease;
 }
 
+/* Tradução automática (Google): marcador "≈" e um pouco mais apagada */
+.lyric-translation.auto {
+  opacity: 0.8;
+}
+
+.lyric-next {
+  margin-top: 18px;
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.lyric-next:empty {
+  display: none;
+}
+
 /* Miniplayer Bar */
 .player-bar {
   display: flex;

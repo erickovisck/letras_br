@@ -1,5 +1,8 @@
+import logging
 import sys
 import os
+
+logger = logging.getLogger(__name__)
 
 def register_protocol():
     """Registra o protocolo personalizado letrasbr:// no Windows para permitir inicialização com 1 clique do navegador."""
@@ -25,10 +28,10 @@ def register_protocol():
 
         winreg.CloseKey(cmd_key)
         winreg.CloseKey(key)
-        print("[Protocol] Protocolo 'letrasbr://' registrado com sucesso no Windows!")
+        logger.info("Protocolo 'letrasbr://' registrado com sucesso no Windows!")
         return True
     except Exception as e:
-        print(f"[Protocol] Erro ao registrar protocolo: {e}")
+        logger.warning(f"Erro ao registrar protocolo: {e}")
         return False
 
 if __name__ == "__main__":

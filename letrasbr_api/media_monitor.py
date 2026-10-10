@@ -5,7 +5,7 @@ sem necessidade de extensões no navegador.
 """
 
 import asyncio
-import time
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -21,6 +21,17 @@ try:
 except ImportError:
     WINRT_AVAILABLE = False
 
+try:
+    from winrt.windows.storage.streams import Buffer, InputStreamOptions
+    THUMBNAIL_AVAILABLE = True
+except ImportError:
+    THUMBNAIL_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+COVER_RECHECK_POLLS = 100     # ~10s relendo a capa (a cada 0,5s) depois de trocar de música
+COVER_IDLE_CHECK_POLLS = 50   # fora dessa janela, confere a capa a cada ~5s
+
 
 class WindowsMediaMonitor(QThread):
     """
@@ -33,6 +44,7 @@ class WindowsMediaMonitor(QThread):
     track_changed = Signal(str, str, str, float)  # title, artist, album, duration
     playback_tick = Signal(float, float, bool)     # current_seconds, duration, is_paused
     source_changed = Signal(str)                  # "spotify", "youtube", "idle"
+    cover_changed = Signal(bytes)                 # bytes da capa (JPEG/PNG) ou b"" se não houver
     status_message = Signal(str)
 
     def __init__(self, parent=None):
@@ -45,6 +57,8 @@ class WindowsMediaMonitor(QThread):
         self._last_artist = ""
         self._last_source: Optional[str] = None
         self._last_is_paused: Optional[bool] = None
+        self._last_cover: Optional[bytes] = None
+        self._cover_recheck_until = 0
 
         # Fila de comandos assíncronos (play, pause, next, previous)
         self._command_queue = []
@@ -97,6 +111,28 @@ class WindowsMediaMonitor(QThread):
         except Exception:
             pass
         return None
+
+    async def _read_thumbnail(self, props) -> bytes:
+        """Lê a miniatura da capa da sessão de mídia (ou b"" se indisponível)."""
+        if not THUMBNAIL_AVAILABLE or not props or not props.thumbnail:
+            return b""
+        try:
+            stream = await props.thumbnail.open_read_async()
+            size = int(stream.size)
+            if size <= 0 or size > 5_000_000:
+                return b""
+            buffer = await stream.read_async(Buffer(size), size, InputStreamOptions.READ_AHEAD)
+            return bytes(buffer)
+        except Exception as e:
+            logger.debug("Não foi possível ler a capa: %s", e)
+            return b""
+
+    async def _check_cover(self, props):
+        """Emite cover_changed só quando os bytes da capa mudaram desde a última emissão."""
+        data = await self._read_thumbnail(props)
+        if data != self._last_cover:
+            self._last_cover = data
+            self.cover_changed.emit(data)
 
     async def _execute_commands(self, session: MediaSession):
         while self._command_queue:
@@ -177,6 +213,14 @@ class WindowsMediaMonitor(QThread):
                         self._last_title = title
                         self._last_artist = artist
                         self.track_changed.emit(title, artist, album, duration)
+                        self._cover_recheck_until = poll_count + COVER_RECHECK_POLLS
+                        await self._check_cover(props)
+                    elif title and (
+                        (poll_count <= self._cover_recheck_until and poll_count % 5 == 0)
+                        or poll_count % COVER_IDLE_CHECK_POLLS == 0
+                    ):
+                        # O navegador troca o título antes da capa: relê a capa por alguns segundos após a troca
+                        await self._check_cover(props)
 
                     # Emite tick contínuo para o overlay sincronizar as letras
                     self.playback_tick.emit(current_seconds, duration, is_paused)
@@ -190,9 +234,10 @@ class WindowsMediaMonitor(QThread):
                     if self._last_title != "":
                         self._last_title = ""
                         self._last_artist = ""
+                        self._last_cover = None
                         self.track_changed.emit("", "", "", 0.0)
 
-            except Exception as e:
+            except Exception:
                 self._current_session = None
 
             poll_count += 1

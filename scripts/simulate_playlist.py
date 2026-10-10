@@ -382,10 +382,9 @@ def run_simulation(
 
             # Direct Scraper Cache Measurement
             print("\n  Measuring in-memory scraper cache (_translation_cache in scraper.py)...")
-            letrasbr_dir = os.path.join(PROJECT_ROOT, "letrasbr_api")
-            if letrasbr_dir not in sys.path:
-                sys.path.insert(0, letrasbr_dir)
-            from scraper import get_translation as scraper_get_translation
+            if PROJECT_ROOT not in sys.path:
+                sys.path.insert(0, PROJECT_ROOT)
+            from letrasbr_api.scraper import get_translation as scraper_get_translation
             t_cold = time.perf_counter()
             _ = scraper_get_translation("Coldplay", "Yellow", lang="pt")
             cold_scrape_ms = (time.perf_counter() - t_cold) * 1000.0

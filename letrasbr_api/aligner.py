@@ -1,13 +1,10 @@
 import re
 import difflib
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import List, Dict, Any, Optional, Tuple
 
-try:
-    import pykakasi
-    _kks = pykakasi.kakasi()
-except Exception:
-    _kks = None
+from .text_utils import get_kakasi, is_instrumental, normalize  # noqa: F401 (reexportados)
 
 
 @dataclass
@@ -17,29 +14,9 @@ class AlignedLine:
     original: str
     translation: str
     is_instrumental: bool
-
-
-def is_instrumental(text: str) -> bool:
-    """Verifica se a linha é apenas instrumental / notas musicais (♪, ♫, etc.) ou vazia."""
-    if not text:
-        return True
-    cleaned = re.sub(r"[\s\(\)\[\]\u2669-\u266f\u266a♫♪♩♬~〜\-–—.]+", "", text).strip().lower()
-    return len(cleaned) == 0 or cleaned in (
-        "instrumental", "solo", "sóinstrumental", "soinstrumental",
-        "soloinstrumental", "instrumentalsolo"
-    )
-
-
-def normalize(text: str) -> str:
-    """Normaliza o texto para comparação."""
-    if not text:
-        return ""
-    text = re.sub(r"[\u2669-\u266f\u266a♫♪♩♬]", "", text).lower()
-    text = re.sub(r"[^\w\s\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]", "", text)
-    return re.sub(r"[\s\u3000]+", " ", text).strip()
-
-
-from functools import lru_cache
+    # Origem da tradução: "letras" (Letras.mus.br), "auto" (tradução automática),
+    # "original" (verso já está no idioma de destino) ou "none" (sem tradução)
+    source: str = "letras"
 
 
 @lru_cache(maxsize=4096)
@@ -60,9 +37,10 @@ def get_variants(text: str) -> List[str]:
     if kata_to_hira and kata_to_hira not in vars_list:
         vars_list.append(kata_to_hira)
 
-    if _kks:
+    kks = get_kakasi()
+    if kks:
         try:
-            conv = _kks.convert(furigana_exp or text)
+            conv = kks.convert(furigana_exp or text)
             hira = "".join([item["hira"] for item in conv])
             if hira and hira not in vars_list:
                 vars_list.append(hira)
@@ -298,7 +276,7 @@ def align_lyrics(
     2. Identifica âncoras cronológicas através de programação dinâmica monotônica.
     3. Repassa todos os versos e preenche lacunas com inteligência (sem duplicar ou sobrescrever
        versos que já possuem tradução completa).
-    4. Registra automaticamente em logs/sem_traducao.log caso haja trechos sem tradução.
+    Versos sem correspondência ficam com translation="" e source="none".
     """
     if not timed_lyrics:
         return []
@@ -313,7 +291,8 @@ def align_lyrics(
                 end_time=line.end_time,
                 original="♪",
                 translation="(♪)",
-                is_instrumental=True
+                is_instrumental=True,
+                source="none"
             )
 
     # Se não temos versos traduzidos do Letras
@@ -324,17 +303,11 @@ def align_lyrics(
                     start_time=line.start_time,
                     end_time=line.end_time,
                     original=line.text,
-                    translation="(sem tradução)",
-                    is_instrumental=False
+                    translation="",
+                    is_instrumental=False,
+                    source="none"
                 )
-        final_list = [r for r in result if r is not None]
-        if title:
-            try:
-                from translation_logger import log_untranslated_lyrics
-                log_untranslated_lyrics(title, artist, lang, final_list)
-            except Exception:
-                pass
-        return final_list
+        return [r for r in result if r is not None]
 
     # Linhas vocais do YTM
     vocal_indices = [i for i, line in enumerate(timed_lyrics) if result[i] is None]
@@ -468,37 +441,33 @@ def align_lyrics(
             if not dedup_l or dedup_l[-1] != item:
                 dedup_l.append(item)
 
-        trans_str = " / ".join(dedup_l) if dedup_l else "♪"
-
         result[y_i] = AlignedLine(
             start_time=line.start_time,
             end_time=line.end_time,
             original=line.text,
-            translation=trans_str,
-            is_instrumental=False
+            translation=" / ".join(dedup_l),
+            is_instrumental=False,
+            source="letras" if dedup_l else "none"
         )
 
-    final_list = [r for r in result if r is not None]
-    if title:
-        try:
-            from translation_logger import log_untranslated_lyrics
-            log_untranslated_lyrics(title, artist, lang, final_list)
-        except Exception:
-            pass
+    return [r for r in result if r is not None]
 
-    return final_list
+
+def find_active_index(aligned_lines: List[AlignedLine], current_time_ms: int) -> int:
+    """
+    Índice do verso ativo no tempo atual: o verso que contém o tempo ou, num intervalo entre versos,
+    o último que já começou. -1 antes do primeiro verso.
+    """
+    active = -1
+    for i, line in enumerate(aligned_lines):
+        if line.start_time <= current_time_ms <= line.end_time:
+            return i
+        if line.start_time <= current_time_ms:
+            active = i
+    return active
 
 
 def find_active_aligned_line(aligned_lines: List[AlignedLine], current_time_ms: int) -> Optional[AlignedLine]:
-    """Busca em tempo real O(N) simples ou direta pela linha correspondente ao timestamp atual."""
-    if not aligned_lines:
-        return None
-
-    active = None
-    for line in aligned_lines:
-        if line.start_time <= current_time_ms <= line.end_time:
-            return line
-        if line.start_time <= current_time_ms:
-            active = line
-
-    return active
+    """Verso ativo no tempo atual (ou None antes do primeiro verso)."""
+    index = find_active_index(aligned_lines, current_time_ms)
+    return aligned_lines[index] if index >= 0 else None

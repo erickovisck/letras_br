@@ -16,6 +16,7 @@ scripts/*.json
 
 # User local config & agent work
 config/overlay_config.json
+config/cache/
 .agents/
 
 # IDE files
@@ -36,3 +37,4 @@ YouTubeMusic-Beautifier-main/
 local.properties
 *.apk
 *.aab
+config/track_prefs.json

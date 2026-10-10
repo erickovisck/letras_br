@@ -17,14 +17,33 @@ let currentState = {
   isPaused: false,
   currTime: 0,
   durTime: 0,
-  connected: false
+  connected: false,
+  lang: "",
+  origSource: "none",
+  nextOrig: "",
+  nextTrans: "",
+  isFetching: false,
+  translationSource: "none",
+  origin: ""
 };
+
+const SOURCE_LABELS = {
+  letras: "Letras.mus.br",
+  mixed: "Letras.mus.br + automática",
+  auto: "Tradução automática",
+  original: "Mesmo idioma (só original)"
+};
+
+// Após trocar o idioma aqui, ignora o idioma do servidor por um tempo (a troca ainda está em andamento)
+const LANG_SYNC_GRACE_MS = 4000;
+let langChangedAt = 0;
 
 // Elementos DOM
 const elTitle = document.getElementById("song-title");
 const elArtist = document.getElementById("song-artist");
 const elOrig = document.getElementById("lyric-orig");
 const elTrans = document.getElementById("lyric-trans");
+const elNext = document.getElementById("lyric-next");
 const elStatusDot = document.getElementById("status-dot");
 const elStatusText = document.getElementById("status-text");
 const elTime = document.getElementById("time-display");
@@ -32,6 +51,7 @@ const elLangBadge = document.getElementById("current-lang-badge");
 const elLyricsBox = document.querySelector(".lyrics-box");
 const btnPlay = document.getElementById("btn-play");
 const btnSkip = document.getElementById("btn-skip");
+const btnPrev = document.getElementById("btn-prev");
 const btnPip = document.getElementById("btn-pip");
 
 // Picture-in-Picture Elements
@@ -66,7 +86,16 @@ async function fetchCurrentPlayback() {
     currentState.isPaused = !!data.isPaused;
     currentState.currTime = data.currentSeconds || 0;
     currentState.durTime = data.durationSeconds || 0;
-    if (data.lang) currentState.lang = data.lang;
+    currentState.origSource = data.activeLineSource || "none";
+    currentState.nextOrig = data.nextOriginal || "";
+    currentState.nextTrans = data.nextTranslation || "";
+    currentState.isFetching = !!data.isFetching;
+    currentState.translationSource = data.translationSource || "none";
+    currentState.origin = data.origin || "";
+    if (data.lang && Date.now() - langChangedAt > LANG_SYNC_GRACE_MS) {
+      currentState.lang = data.lang;
+      syncButtonGroup("#lang-group", "lang", data.lang);
+    }
 
     updateUI();
   } catch (err) {
@@ -89,6 +118,8 @@ async function sendPlayerAction(action) {
 
 async function changeLanguage(langCode) {
   config.lang = langCode;
+  currentState.lang = langCode;
+  langChangedAt = Date.now();
   localStorage.setItem("letrasbr_lang", langCode);
   try {
     await fetch(`${apiUrl}/api/language`, {
@@ -104,11 +135,33 @@ async function changeLanguage(langCode) {
 // ----------------------------------------------------
 // Atualização de UI
 // ----------------------------------------------------
+function syncButtonGroup(groupSelector, dataKey, value) {
+  document.querySelectorAll(`${groupSelector} button`).forEach(b => {
+    b.classList.toggle("active", b.dataset[dataKey] === value);
+  });
+}
+
+function displayTranslation() {
+  // "≈" marca verso traduzido automaticamente (Google), como no overlay desktop
+  if (!currentState.trans) return "";
+  return currentState.origSource === "auto" ? `≈ ${currentState.trans}` : currentState.trans;
+}
+
+function nextLineText() {
+  const { nextOrig, nextTrans } = currentState;
+  if (config.mode === "orig") return nextOrig;
+  if (config.mode === "trans") return nextTrans || nextOrig;
+  return nextTrans || nextOrig;
+}
+
 function updateUI() {
   // Status de conexão
   if (currentState.connected) {
     elStatusDot.className = "dot connected";
-    elStatusText.innerText = "Conectado à API";
+    const parts = [currentState.origin === "desktop" ? "Conectado ao LetrasBR Desktop" : "Conectado à API"];
+    const label = SOURCE_LABELS[currentState.translationSource];
+    if (currentState.title && label) parts.push(label);
+    elStatusText.innerText = parts.join(" · ");
   } else {
     elStatusDot.className = "dot disconnected";
     elStatusText.innerText = "Desconectado (Verifique a API)";
@@ -125,7 +178,10 @@ function updateUI() {
 
   // Letras
   if (!currentState.orig && !currentState.trans) {
-    if (currentState.title) {
+    if (currentState.title && currentState.isFetching) {
+      elOrig.innerText = `${currentState.artist} - ${currentState.title}`;
+      elTrans.innerText = "⏳ Buscando letra e tradução...";
+    } else if (currentState.title) {
       elOrig.innerText = `${currentState.artist} - ${currentState.title}`;
       elTrans.innerText = "⏳ Aguardando início dos versos...";
     } else {
@@ -134,8 +190,10 @@ function updateUI() {
     }
   } else {
     elOrig.innerText = currentState.orig || " ";
-    elTrans.innerText = currentState.trans || " ";
+    elTrans.innerText = displayTranslation() || " ";
   }
+  elTrans.classList.toggle("auto", currentState.origSource === "auto");
+  elNext.innerText = currentState.title ? nextLineText() : "";
 
   // Modo de exibição
   if (config.mode === "trans") {
@@ -194,19 +252,38 @@ function drawPiPCanvas() {
   pipCtx.textAlign = "center";
   pipCtx.fillText((currentState.lang || config.lang).toUpperCase(), w - 32, 21);
 
-  // Desenha Verso Original
-  const origText = currentState.orig || (currentState.title ? "Aguardando versos..." : "Aguardando música...");
-  pipCtx.fillStyle = "#cbd5e1";
-  pipCtx.font = "18px sans-serif";
   pipCtx.textAlign = "center";
-  pipCtx.fillText(origText, w / 2, 105);
+  const showOrig = config.mode !== "trans";
+  const showTrans = config.mode !== "orig";
 
-  // Desenha Verso Traduzido
-  const transText = currentState.trans || "";
-  pipCtx.fillStyle = "#38bdf8";
-  pipCtx.font = "bold 22px sans-serif";
-  pipCtx.textAlign = "center";
-  pipCtx.fillText(transText, w / 2, 175);
+  // Verso original
+  if (showOrig) {
+    const origText = currentState.orig || (currentState.title ? "Aguardando versos..." : "Aguardando música...");
+    pipCtx.fillStyle = "#cbd5e1";
+    fillFittedText(origText, w / 2, showTrans ? 95 : 130, w - 30, 20, "");
+  }
+
+  // Verso traduzido
+  if (showTrans) {
+    pipCtx.fillStyle = currentState.origSource === "auto" ? "#7dd3fc" : "#38bdf8";
+    fillFittedText(displayTranslation(), w / 2, showOrig ? 150 : 130, w - 30, 24, "bold ");
+  }
+
+  // Próxima linha
+  pipCtx.fillStyle = "#64748b";
+  fillFittedText(nextLineText(), w / 2, 210, w - 30, 15, "");
+}
+
+// Desenha o texto numa linha, reduzindo a fonte até caber na largura
+function fillFittedText(text, x, y, maxWidth, size, weight) {
+  if (!text) return;
+  let px = size;
+  pipCtx.font = `${weight}${px}px sans-serif`;
+  while (px > 10 && pipCtx.measureText(text).width > maxWidth) {
+    px -= 1;
+    pipCtx.font = `${weight}${px}px sans-serif`;
+  }
+  pipCtx.fillText(text, x, y, maxWidth);
 }
 
 async function startPiP() {
@@ -239,6 +316,7 @@ pipVideo.addEventListener("leavepictureinpicture", () => {
 // ----------------------------------------------------
 btnPlay.addEventListener("click", () => sendPlayerAction("play_pause"));
 btnSkip.addEventListener("click", () => sendPlayerAction("next"));
+btnPrev.addEventListener("click", () => sendPlayerAction("previous"));
 btnPip.addEventListener("click", startPiP);
 
 // Configurações
@@ -316,6 +394,8 @@ btnSaveSettings.addEventListener("click", () => {
 });
 
 // Aplica configurações iniciais
+syncButtonGroup("#lang-group", "lang", config.lang);
+syncButtonGroup("#mode-group", "mode", config.mode);
 elOrig.style.fontSize = `${config.fontSize}px`;
 elTrans.style.fontSize = `${Math.round(config.fontSize * 1.15)}px`;
 elLyricsBox.style.opacity = config.opacity / 100;

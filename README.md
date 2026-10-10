@@ -99,15 +99,21 @@ TRADUTOR YT MUSIC/
 │   ├── registrar_menu_iniciar.bat # Registers Start Menu shortcut for Windows Search
 │   └── registrar_protocolo.bat    # Registers letrasbr:// URL protocol in Windows Registry
 │
-├── letrasbr_api/             # Core backend and graphical interface modules
-│   ├── overlay_qt.py         # PySide6 GUI (HUD overlay, 3D verse animation, controls)
-│   ├── media_monitor.py      # Native Windows Media Monitor (WinRT GSMTC)
-│   ├── lyrics_client.py      # Async lyrics worker with request cancellation
+├── letrasbr_api/             # Core package (run with `python -m letrasbr_api`)
+│   ├── app.py                # Entry point: FastAPI in background + PySide6 overlay
+│   ├── pipeline.py           # Single flow: synced lyrics -> translation -> alignment -> auto fallback
 │   ├── scraper.py            # letras.mus.br lyrics and translation scraper
+│   ├── machine_translate.py  # Free Google Translate fallback + language detection
 │   ├── aligner.py            # Verse-by-verse temporal alignment engine
-│   ├── config.py             # Configuration file manager
+│   ├── providers/            # Synced lyrics sources (YouTube Music, LRCLIB/Spotify)
+│   ├── ui/                   # PySide6 GUI (overlay window, lyric view, settings, tray)
+│   ├── media_monitor.py      # Native Windows Media Monitor (WinRT GSMTC)
+│   ├── lyrics_client.py      # Background lyrics worker for the overlay
 │   ├── main.py               # REST API endpoints (FastAPI)
+│   ├── config.py / languages.py / logging_setup.py
 │   └── requirements.txt      # Python dependencies (PySide6, winrt, fastapi, etc.)
+│
+├── tests/                    # pytest suite (`python -m pytest`; `--network` for online tests)
 │
 ├── android/                  # Native Kotlin Android application
 └── extension/                # Chromium Manifest V3 Web Extension (legacy/optional)
@@ -161,19 +167,36 @@ If you wish to view real-time log outputs or debug messages:
 
 ---
 
+### Running the tests
+
+```cmd
+.venv\Scripts\pip.exe install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest              # offline tests
+.venv\Scripts\python.exe -m pytest --network    # also hits YouTube Music, Letras, LRCLIB and Google
+```
+
+Logs are written to `logs/letrasbr.log` (rotating).
+
+---
+
 ## 🎨 Visual Interface & Customization
 
 The floating overlay can be fully personalized to match your desktop aesthetic:
 
 - **Drag & Reposition:** Click and drag the dark top bar to place the overlay anywhere on your screens.
-- **Freeform Resize:** Click and drag the `⇲` handle at the bottom right corner.
+- **Freeform Resize:** Click and drag the `⇲` handle at the bottom right corner. The taller the overlay, the more previous/next lines are shown around the current one.
 - **Scrub / Seek Audio:** Use the interactive progress slider in the top bar beside the media buttons.
-- **Settings Menu (`⚙️`):**
-  - Adjust background color and opacity/transparency in real time.
-  - Choose independent colors for original and translated lyrics.
-  - Select any installed font family and adjust font size using ergonomic `[−]` and `[+]` buttons or slider.
-  - Toggle Bold and Italic styles.
-- **System Tray:** Right-click the LetrasBR tray icon next to the Windows clock for quick media actions or to exit.
+- **Full lyrics (`≡`):** Opens a panel with the whole song; click a line to jump to it.
+- **Per-song sync offset:** The `−`/`+` buttons (or `[` `]` keys, `0` to reset) shift the lyrics by 250 ms. The offset is saved for that song.
+- **Wrong song?** Click the song status to open its Letras page, paste the correct translation link, or reload.
+- **Auto-hiding controls:** The bars fade out when the mouse leaves the overlay.
+- **Lock (click-through):** While locked, clicks pass through to the window behind. Unlock with `Ctrl+Alt+L` or from the tray menu.
+- **Settings Menu (`⚙️`)**, organized in tabs with live preview (Cancel reverts):
+  - Built-in themes, including **Dynamic**, which takes its colors from the album cover and its font from the song's genre (MusicBrainz + iTunes; Windows/Office fonts, with bold and letter spacing per style).
+  - Background color, opacity, original and translation colors.
+  - Font, size, Bold/Italic and a text effect (shadow or outline) for transparent backgrounds.
+  - Line transition (3D, scroll, slide, fade or none) and its duration.
+- **System Tray:** Right-click the LetrasBR tray icon next to the Windows clock for quick media actions, lock/unlock, or to exit.
 
 ---
 
@@ -203,7 +226,10 @@ If you use iOS or prefer not to install the Android APK:
    ```text
    http://<YOUR-PC-IP>:8000/mobile
    ```
+   The exact address is shown in the tray menu (**Ver letra no celular...**, already copied) and in the startup log.
 3. Tap **📺 PiP** to launch floating synchronized subtitles in a native Picture-in-Picture window.
+
+With LetrasBR Desktop running, the page mirrors the overlay (current line, next line and the `≈` auto-translation marker). The ⏮ ⏯ ⏭ buttons control the PC player, and changing the language on the phone changes it on the desktop too.
 
 ---
 
