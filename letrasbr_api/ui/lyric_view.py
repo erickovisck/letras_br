@@ -144,9 +144,8 @@ class LyricContainerWidget(QWidget):
         normal = QFont(family, max(9, int(size * 0.9)))
         normal.setItalic(italic)
 
-        # Tema dinâmico por gênero: maiúsculas/minúsculas e espaçamento entre letras
-        caps = {"upper": QFont.AllUppercase, "lower": QFont.AllLowercase}.get(self._config.get("fontCaps", ""), QFont.MixedCase)
-        spacing = 100 + int(self._config.get("fontSpacing", 0))
+        caps = QFont.AllUppercase if self._config.get("fontUppercase", False) else QFont.MixedCase
+        spacing = 100 + int(self._config.get("fontSpacing", 0))  # Tema dinâmico por gênero
         for font in (emphasized, normal):
             font.setCapitalization(caps)
             font.setLetterSpacing(QFont.PercentageSpacing, spacing)

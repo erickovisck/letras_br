@@ -192,7 +192,7 @@ O overlay flutuante pode ser completamente customizado para combinar com seu pap
 - **Controles que somem sozinhos:** As barras desaparecem quando o mouse sai do overlay.
 - **Cadeado (click-through):** Com o overlay travado, os cliques passam para a janela de trás. Destrave com `Ctrl+Alt+L` ou pelo menu da bandeja.
 - **Menu de Configurações (`⚙️`)**, em abas, com pré-visualização ao vivo (Cancelar desfaz):
-  - Temas prontos, incluindo o **Dinâmico**, que tira as cores da capa do álbum e a fonte do gênero da música (MusicBrainz + iTunes; fontes do Windows/Office, com maiúsculas, negrito e espaçamento por estilo).
+  - Temas prontos, incluindo o **Dinâmico**, que tira as cores da capa do álbum e a fonte do gênero da música (MusicBrainz + iTunes; fontes do Windows/Office, com negrito e espaçamento por estilo).
   - Cor de fundo, transparência, cor do verso original e da tradução.
   - Fonte, tamanho, Negrito/Itálico e efeito no texto (sombra ou contorno) para fundos transparentes.
   - Transição entre versos (3D, rolagem, deslizar, esmaecer ou nenhuma) e sua duração.

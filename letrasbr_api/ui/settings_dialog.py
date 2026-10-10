@@ -173,7 +173,8 @@ class SettingsDialogQt(QDialog):
         style_row = QHBoxLayout()
         self.chk_bold = QCheckBox("Negrito")
         self.chk_italic = QCheckBox("Itálico")
-        for chk in (self.chk_bold, self.chk_italic):
+        self.chk_upper = QCheckBox("Maiúsculas")
+        for chk in (self.chk_bold, self.chk_italic, self.chk_upper):
             chk.toggled.connect(self._preview)
             style_row.addWidget(chk)
         style_row.addStretch()
@@ -267,6 +268,7 @@ class SettingsDialogQt(QDialog):
         self.lbl_font_size_val.setText(f"{self.slider_font_size.value()} pt")
         self.chk_bold.setChecked(bool(cfg.get("fontBold", True)))
         self.chk_italic.setChecked(bool(cfg.get("fontItalic", False)))
+        self.chk_upper.setChecked(bool(cfg.get("fontUppercase", False)))
         self.cb_mode.setCurrentIndex(max(0, self.cb_mode.findData(cfg.get("displayMode", "both"))))
         self.cb_transition.setCurrentIndex(max(0, self.cb_transition.findData(cfg.get("transition", "3d"))))
         self.slider_transition_ms.setValue(int(cfg.get("transitionMs", 300)))
@@ -286,6 +288,7 @@ class SettingsDialogQt(QDialog):
         self.cfg["fontSize"] = self.slider_font_size.value()
         self.cfg["fontBold"] = self.chk_bold.isChecked()
         self.cfg["fontItalic"] = self.chk_italic.isChecked()
+        self.cfg["fontUppercase"] = self.chk_upper.isChecked()
         self.cfg["displayMode"] = self.cb_mode.currentData()
         self.cfg["transition"] = self.cb_transition.currentData()
         self.cfg["transitionMs"] = self.slider_transition_ms.value()
@@ -360,7 +363,7 @@ class SettingsDialogQt(QDialog):
         QMessageBox.information(self, "Tema Salvo", f"Tema '{name.strip()}' salvo em:\n{saved_path}")
 
     def _restore_defaults(self):
-        keys = THEME_KEYS + ("displayMode", "transition", "transitionMs", "textEffect", "autoHideControls")
+        keys = THEME_KEYS + ("displayMode", "transition", "transitionMs", "textEffect", "autoHideControls", "fontUppercase")
         self.cfg.update({k: DEFAULT_CONFIG[k] for k in keys})
         theme = self.available_themes.get(DEFAULT_THEME_NAME)
         if theme:

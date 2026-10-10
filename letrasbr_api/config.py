@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "fontSize": 15,
     "fontBold": True,
     "fontItalic": False,
+    "fontUppercase": False,  # Letra toda em maiúsculas
     "displayMode": "both",  # "both", "trans", "orig"
     "transition": "3d",     # "3d", "scroll", "slide", "fade", "none" (ver ui/lyric_view.py)
     "transitionMs": 300,
