@@ -8,6 +8,7 @@ com miniplayer integrado ao Windows (GSMTC) e sincronização das letras em temp
 """
 
 import os
+import threading
 import webbrowser
 from typing import Optional, List
 
@@ -22,11 +23,13 @@ from .. import track_prefs
 from ..aligner import AlignedLine, find_active_index
 from ..config import DYNAMIC_THEME_NAME, get_config, save_config
 from ..desktop_bridge import bridge
+from ..genre import resolve_style
 from ..lyrics_client import LyricsClient
 from ..media_monitor import WindowsMediaMonitor
 from ..pipeline import LyricsResult
 from ..scraper import BASE_URL, clear_translation_cache, letras_path_from_url
 from .cover_colors import theme_from_cover
+from .genre_style import genre_font_config
 from .hotkeys import MOD_ALT, MOD_CONTROL, GlobalHotkeys
 from .icons import ASSETS_DIR, load_tinted_icon
 from .lyric_view import LyricContainerWidget
@@ -143,6 +146,7 @@ class LyricsOverlayQt(QWidget):
     """Janela principal do overlay flutuante."""
 
     language_requested = Signal(str)  # Emitido da thread da API (troca de idioma pelo /mobile)
+    genre_resolved = Signal(str, str, str)  # artista, título, estilo ("" se desconhecido); emitido de outra thread
 
     def __init__(self, media_monitor: Optional[WindowsMediaMonitor] = None, parent=None):
         super().__init__(parent)
@@ -161,6 +165,9 @@ class LyricsOverlayQt(QWidget):
         self._result: Optional[LyricsResult] = None
         self._offset_ms = 0
         self._cover_theme: Optional[dict] = None
+        self._genre_style: Optional[dict] = None  # Fonte do tema dinâmico pelo gênero da música
+        self._genre_track: tuple = ()             # Música cujo gênero já foi pedido
+        self.genre_resolved.connect(self._on_genre_resolved)
 
         self.aligned_lyrics: List[AlignedLine] = []
         self.is_locked = bool(self.config.get("locked", False))
@@ -351,6 +358,8 @@ class LyricsOverlayQt(QWidget):
     def _apply_current_style(self, cfg: Optional[dict] = None):
         """Aplica tema/cores. `cfg` permite pré-visualizar sem alterar a configuração (tela de configurações)."""
         cfg = cfg or self.config
+        if cfg.get("theme") == DYNAMIC_THEME_NAME and self._genre_style:
+            cfg = {**cfg, **self._genre_style}  # Não altera a fonte salva do usuário
         pal = Palette.from_config(cfg)
         opacity = float(cfg.get("opacity", 0.88))
         ink = "#000000" if pal.is_light else "#ffffff"
@@ -686,6 +695,28 @@ class LyricsOverlayQt(QWidget):
             self.config.update(self._cover_theme)
             self._apply_current_style()
 
+    def _lookup_genre(self):
+        """Busca em segundo plano o gênero da música atual (só com o tema dinâmico, uma vez por música)."""
+        track = (self.current_artist, self.current_title)
+        if self.config.get("theme") != DYNAMIC_THEME_NAME or not self.current_title or track == self._genre_track:
+            return
+        self._genre_track = track
+        artist, title = track
+
+        def work():
+            self.genre_resolved.emit(artist, title, resolve_style(artist, title) or "")
+
+        threading.Thread(target=work, daemon=True, name="genre-lookup").start()
+
+    @Slot(str, str, str)
+    def _on_genre_resolved(self, artist: str, title: str, style_key: str):
+        if (artist, title) != (self.current_artist, self.current_title):
+            return  # Música já mudou
+        self._genre_style = genre_font_config(style_key)
+        label = self._genre_style.get("genreLabel") if self._genre_style else ""
+        self.lbl_status.setToolTip(f"Fonte pelo gênero: {label}" if label else "")
+        self._apply_current_style()
+
     @Slot(str, str, str, float)
     def _on_track_changed(self, title: str, artist: str, album: str, duration: float):
         """Música mudou (autoplay ou pulo manual): feedback imediato e busca da letra em segundo plano."""
@@ -701,6 +732,7 @@ class LyricsOverlayQt(QWidget):
         self._update_offset_label()
         bridge.set_track(title, artist, album, duration, self._current_source,
                          self.config.get("lang", "pt"), self._offset_ms)
+        self._lookup_genre()
 
         if not title:
             self.lbl_source_icon.setVisible(False)
@@ -810,6 +842,7 @@ class LyricsOverlayQt(QWidget):
         bridge.set_lang(new_cfg.get("lang", "pt"))
         if new_cfg.get("theme") == DYNAMIC_THEME_NAME and self._cover_theme:
             self.config.update(self._cover_theme)
+        self._lookup_genre()
         self._apply_current_style()
 
         # Só recarrega a música atual se mudou algo que afeta a tradução (idioma ou fallback automático)

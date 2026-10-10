@@ -143,6 +143,13 @@ class LyricContainerWidget(QWidget):
         emphasized.setItalic(italic)
         normal = QFont(family, max(9, int(size * 0.9)))
         normal.setItalic(italic)
+
+        # Tema dinâmico por gênero: maiúsculas/minúsculas e espaçamento entre letras
+        caps = {"upper": QFont.AllUppercase, "lower": QFont.AllLowercase}.get(self._config.get("fontCaps", ""), QFont.MixedCase)
+        spacing = 100 + int(self._config.get("fontSpacing", 0))
+        for font in (emphasized, normal):
+            font.setCapitalization(caps)
+            font.setLetterSpacing(QFont.PercentageSpacing, spacing)
         return emphasized, normal
 
     def _layout(self, verse: Verse):

@@ -192,7 +192,7 @@ The floating overlay can be fully personalized to match your desktop aesthetic:
 - **Auto-hiding controls:** The bars fade out when the mouse leaves the overlay.
 - **Lock (click-through):** While locked, clicks pass through to the window behind. Unlock with `Ctrl+Alt+L` or from the tray menu.
 - **Settings Menu (`⚙️`)**, organized in tabs with live preview (Cancel reverts):
-  - Built-in themes, including **Dynamic**, which takes its colors from the album cover.
+  - Built-in themes, including **Dynamic**, which takes its colors from the album cover and its font from the song's genre (MusicBrainz + iTunes; Windows/Office fonts, with uppercase, bold and letter spacing per style).
   - Background color, opacity, original and translation colors.
   - Font, size, Bold/Italic and a text effect (shadow or outline) for transparent backgrounds.
   - Line transition (3D, scroll, slide, fade or none) and its duration.

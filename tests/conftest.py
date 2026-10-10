@@ -1,6 +1,6 @@
 import pytest
 
-from letrasbr_api import machine_translate, main, scraper, track_prefs, translation_logger
+from letrasbr_api import genre, machine_translate, main, scraper, track_prefs, translation_logger
 
 
 def pytest_addoption(parser):
@@ -26,6 +26,9 @@ def isolate_side_effects(tmp_path, monkeypatch):
     monkeypatch.setattr(machine_translate, "_cache", None)
     monkeypatch.setattr(machine_translate, "_blocked_until", {})
     monkeypatch.setattr(main, "save_config", lambda cfg: None)
+    monkeypatch.setattr(genre, "CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(genre, "CACHE_FILE", str(tmp_path / "cache" / "genres.json"))
+    monkeypatch.setattr(genre, "_cache", None)
     monkeypatch.setattr(track_prefs, "PREFS_FILE", str(tmp_path / "track_prefs.json"))
     monkeypatch.setattr(track_prefs, "_prefs", None)
     scraper._translation_cache.clear()
