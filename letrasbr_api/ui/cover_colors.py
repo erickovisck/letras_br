@@ -37,8 +37,8 @@ def theme_from_cover(image_bytes: bytes) -> Optional[Dict[str, str]]:
     if image.isNull():
         return None
     base = dominant_vibrant_color(image)
-    if base is None:
-        return None
+    if base is None:  # capa acinzentada: paleta neutra, para não ficar com as cores da música anterior
+        base = QColor.fromHsvF(0.6, 0.0, 0.5)
     hue = base.hsvHueF()
     sat = base.hsvSaturationF()
     return {

@@ -5,6 +5,7 @@ sem necessidade de extensões no navegador.
 """
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -25,6 +26,11 @@ try:
     THUMBNAIL_AVAILABLE = True
 except ImportError:
     THUMBNAIL_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+COVER_RECHECK_POLLS = 100     # ~10s relendo a capa (a cada 0,5s) depois de trocar de música
+COVER_IDLE_CHECK_POLLS = 50   # fora dessa janela, confere a capa a cada ~5s
 
 
 class WindowsMediaMonitor(QThread):
@@ -51,6 +57,8 @@ class WindowsMediaMonitor(QThread):
         self._last_artist = ""
         self._last_source: Optional[str] = None
         self._last_is_paused: Optional[bool] = None
+        self._last_cover: Optional[bytes] = None
+        self._cover_recheck_until = 0
 
         # Fila de comandos assíncronos (play, pause, next, previous)
         self._command_queue = []
@@ -116,8 +124,15 @@ class WindowsMediaMonitor(QThread):
             buffer = await stream.read_async(Buffer(size), size, InputStreamOptions.READ_AHEAD)
             return bytes(buffer)
         except Exception as e:
-            self.status_message.emit(f"Não foi possível ler a capa: {e}")
+            logger.debug("Não foi possível ler a capa: %s", e)
             return b""
+
+    async def _check_cover(self, props):
+        """Emite cover_changed só quando os bytes da capa mudaram desde a última emissão."""
+        data = await self._read_thumbnail(props)
+        if data != self._last_cover:
+            self._last_cover = data
+            self.cover_changed.emit(data)
 
     async def _execute_commands(self, session: MediaSession):
         while self._command_queue:
@@ -198,7 +213,14 @@ class WindowsMediaMonitor(QThread):
                         self._last_title = title
                         self._last_artist = artist
                         self.track_changed.emit(title, artist, album, duration)
-                        self.cover_changed.emit(await self._read_thumbnail(props))
+                        self._cover_recheck_until = poll_count + COVER_RECHECK_POLLS
+                        await self._check_cover(props)
+                    elif title and (
+                        (poll_count <= self._cover_recheck_until and poll_count % 5 == 0)
+                        or poll_count % COVER_IDLE_CHECK_POLLS == 0
+                    ):
+                        # O navegador troca o título antes da capa: relê a capa por alguns segundos após a troca
+                        await self._check_cover(props)
 
                     # Emite tick contínuo para o overlay sincronizar as letras
                     self.playback_tick.emit(current_seconds, duration, is_paused)
@@ -212,6 +234,7 @@ class WindowsMediaMonitor(QThread):
                     if self._last_title != "":
                         self._last_title = ""
                         self._last_artist = ""
+                        self._last_cover = None
                         self.track_changed.emit("", "", "", 0.0)
 
             except Exception:

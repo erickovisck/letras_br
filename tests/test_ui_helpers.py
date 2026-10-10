@@ -31,8 +31,9 @@ def test_cover_theme_follows_vibrant_color():
     assert luminance(theme["origColor"]) > 0.6      # texto claro e legível
 
 
-def test_grayscale_cover_has_no_theme():
-    assert theme_from_cover(image_bytes("#808080", accent="#202020")) is None
+def test_grayscale_cover_gets_neutral_theme():
+    theme = theme_from_cover(image_bytes("#808080", accent="#202020"))
+    assert theme is not None and theme["bgColor"] == "#1c1c1c"
 
 
 def test_invalid_image_has_no_theme():
