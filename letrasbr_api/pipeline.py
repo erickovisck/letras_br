@@ -13,6 +13,7 @@ from .machine_translate import detect_language, translate_lines
 from .providers import ProviderFactory, TimedLine, TrackInfo
 from .providers.lrclib import fetch_lrclib_lyrics
 from .scraper import clean_song_title, fetch_translation, TranslationResult
+from .track_prefs import get_letras_path
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +165,10 @@ def fetch_and_align(
 
     # 3. Tradução no Letras.mus.br (sem cair para PT quando o fallback automático está ligado)
     cleaned_title = clean_song_title(title)
-    translation = fetch_translation(artist, cleaned_title, lang, allow_pt_fallback=not auto_translate)
-    if not translation.song_found and ("-" in title or "(" in title):
+    manual_path = get_letras_path(artist, title)  # Página escolhida pelo usuário em "Música errada?"
+    translation = fetch_translation(artist, cleaned_title, lang, allow_pt_fallback=not auto_translate,
+                                    song_path=manual_path)
+    if not manual_path and not translation.song_found and ("-" in title or "(" in title):
         simple_title = title.split("-")[0].split("(")[0].strip()
         if simple_title and simple_title != cleaned_title:
             translation = fetch_translation(artist, simple_title, lang, allow_pt_fallback=not auto_translate)

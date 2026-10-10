@@ -453,16 +453,21 @@ def align_lyrics(
     return [r for r in result if r is not None]
 
 
-def find_active_aligned_line(aligned_lines: List[AlignedLine], current_time_ms: int) -> Optional[AlignedLine]:
-    """Busca em tempo real O(N) simples ou direta pela linha correspondente ao timestamp atual."""
-    if not aligned_lines:
-        return None
-
-    active = None
-    for line in aligned_lines:
+def find_active_index(aligned_lines: List[AlignedLine], current_time_ms: int) -> int:
+    """
+    Índice do verso ativo no tempo atual: o verso que contém o tempo ou, num intervalo entre versos,
+    o último que já começou. -1 antes do primeiro verso.
+    """
+    active = -1
+    for i, line in enumerate(aligned_lines):
         if line.start_time <= current_time_ms <= line.end_time:
-            return line
+            return i
         if line.start_time <= current_time_ms:
-            active = line
-
+            active = i
     return active
+
+
+def find_active_aligned_line(aligned_lines: List[AlignedLine], current_time_ms: int) -> Optional[AlignedLine]:
+    """Verso ativo no tempo atual (ou None antes do primeiro verso)."""
+    index = find_active_index(aligned_lines, current_time_ms)
+    return aligned_lines[index] if index >= 0 else None

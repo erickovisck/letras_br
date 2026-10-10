@@ -184,14 +184,19 @@ Logs are written to `logs/letrasbr.log` (rotating).
 The floating overlay can be fully personalized to match your desktop aesthetic:
 
 - **Drag & Reposition:** Click and drag the dark top bar to place the overlay anywhere on your screens.
-- **Freeform Resize:** Click and drag the `⇲` handle at the bottom right corner.
+- **Freeform Resize:** Click and drag the `⇲` handle at the bottom right corner. The taller the overlay, the more previous/next lines are shown around the current one.
 - **Scrub / Seek Audio:** Use the interactive progress slider in the top bar beside the media buttons.
-- **Settings Menu (`⚙️`):**
-  - Adjust background color and opacity/transparency in real time.
-  - Choose independent colors for original and translated lyrics.
-  - Select any installed font family and adjust font size using ergonomic `[−]` and `[+]` buttons or slider.
-  - Toggle Bold and Italic styles.
-- **System Tray:** Right-click the LetrasBR tray icon next to the Windows clock for quick media actions or to exit.
+- **Full lyrics (`≡`):** Opens a panel with the whole song; click a line to jump to it.
+- **Per-song sync offset:** The `−`/`+` buttons (or `[` `]` keys, `0` to reset) shift the lyrics by 250 ms. The offset is saved for that song.
+- **Wrong song?** Click the song status to open its Letras page, paste the correct translation link, or reload.
+- **Auto-hiding controls:** The bars fade out when the mouse leaves the overlay.
+- **Lock (click-through):** While locked, clicks pass through to the window behind. Unlock with `Ctrl+Alt+L` or from the tray menu.
+- **Settings Menu (`⚙️`)**, organized in tabs with live preview (Cancel reverts):
+  - Built-in themes, including **Dynamic**, which takes its colors from the album cover.
+  - Background color, opacity, original and translation colors.
+  - Font, size, Bold/Italic and a text effect (shadow or outline) for transparent backgrounds.
+  - Line transition (3D, scroll, slide, fade or none) and its duration.
+- **System Tray:** Right-click the LetrasBR tray icon next to the Windows clock for quick media actions, lock/unlock, or to exit.
 
 ---
 

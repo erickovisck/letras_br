@@ -20,6 +20,12 @@ try:
 except ImportError:
     WINRT_AVAILABLE = False
 
+try:
+    from winrt.windows.storage.streams import Buffer, InputStreamOptions
+    THUMBNAIL_AVAILABLE = True
+except ImportError:
+    THUMBNAIL_AVAILABLE = False
+
 
 class WindowsMediaMonitor(QThread):
     """
@@ -32,6 +38,7 @@ class WindowsMediaMonitor(QThread):
     track_changed = Signal(str, str, str, float)  # title, artist, album, duration
     playback_tick = Signal(float, float, bool)     # current_seconds, duration, is_paused
     source_changed = Signal(str)                  # "spotify", "youtube", "idle"
+    cover_changed = Signal(bytes)                 # bytes da capa (JPEG/PNG) ou b"" se não houver
     status_message = Signal(str)
 
     def __init__(self, parent=None):
@@ -96,6 +103,21 @@ class WindowsMediaMonitor(QThread):
         except Exception:
             pass
         return None
+
+    async def _read_thumbnail(self, props) -> bytes:
+        """Lê a miniatura da capa da sessão de mídia (ou b"" se indisponível)."""
+        if not THUMBNAIL_AVAILABLE or not props or not props.thumbnail:
+            return b""
+        try:
+            stream = await props.thumbnail.open_read_async()
+            size = int(stream.size)
+            if size <= 0 or size > 5_000_000:
+                return b""
+            buffer = await stream.read_async(Buffer(size), size, InputStreamOptions.READ_AHEAD)
+            return bytes(buffer)
+        except Exception as e:
+            self.status_message.emit(f"Não foi possível ler a capa: {e}")
+            return b""
 
     async def _execute_commands(self, session: MediaSession):
         while self._command_queue:
@@ -176,6 +198,7 @@ class WindowsMediaMonitor(QThread):
                         self._last_title = title
                         self._last_artist = artist
                         self.track_changed.emit(title, artist, album, duration)
+                        self.cover_changed.emit(await self._read_thumbnail(props))
 
                     # Emite tick contínuo para o overlay sincronizar as letras
                     self.playback_tick.emit(current_seconds, duration, is_paused)

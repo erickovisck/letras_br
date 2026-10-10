@@ -527,6 +527,12 @@ def _parse_translation_page(html: str) -> Tuple[Dict[str, str], List[Dict[str, A
     return lyrics_dict, ordered_verses
 
 
+def clear_translation_cache():
+    """Esquece as traduções em memória (usado em "Recarregar letra")."""
+    with _translation_cache_lock:
+        _translation_cache.clear()
+
+
 def _cache_put(key: str, result: TranslationResult):
     with _translation_cache_lock:
         if len(_translation_cache) >= _MAX_CACHE_SIZE:
@@ -534,7 +540,25 @@ def _cache_put(key: str, result: TranslationResult):
         _translation_cache[key] = result
 
 
-def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fallback: bool = True) -> TranslationResult:
+def letras_path_from_url(text: str) -> Optional[str]:
+    """
+    Extrai o caminho da música de uma URL do Letras.mus.br colada pelo usuário:
+    'https://www.letras.mus.br/ado/odo/traducao.html' -> '/ado/odo/'. Retorna None se não for uma URL válida.
+    """
+    text = (text or "").strip()
+    if "letras.mus.br" in text:
+        text = text.split("letras.mus.br", 1)[1]
+    match = re.match(r'(/[^/\s?#]+/[^/\s?#]+)', text)
+    return match.group(1) + "/" if match else None
+
+
+def fetch_translation(
+    artist: str,
+    song_name: str,
+    lang: str = "pt",
+    allow_pt_fallback: bool = True,
+    song_path: Optional[str] = None,
+) -> TranslationResult:
     """
     Obtém a tradução verso a verso da música no Letras.mus.br no idioma escolhido.
     Sufixos suportados:
@@ -546,9 +570,10 @@ def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fa
     (o idioma efetivamente carregado fica em result.lang_used).
     Resultados definitivos (inclusive "não encontrado") são cacheados; falhas transitórias
     de rede/bloqueio não, para que a próxima tentativa busque de novo.
+    `song_path` (ex: '/ado/odo/') pula a busca e usa diretamente essa página do Letras.
     """
     lang = (lang or "pt").lower().strip()
-    cache_key = f"{artist.lower().strip()}|||{song_name.lower().strip()}|||{lang}|||{int(allow_pt_fallback)}"
+    cache_key = f"{artist.lower().strip()}|||{song_name.lower().strip()}|||{lang}|||{int(allow_pt_fallback)}|||{song_path or ''}"
     with _translation_cache_lock:
         if cache_key in _translation_cache:
             logger.info(f"[CACHE] Hit para '{song_name}' ({lang.upper()}) — pulando scraping.")
@@ -557,7 +582,7 @@ def fetch_translation(artist: str, song_name: str, lang: str = "pt", allow_pt_fa
     _request_state.transient_failure = False
     result = TranslationResult()
 
-    song_path = get_song_url(artist, song_name)
+    song_path = song_path or get_song_url(artist, song_name)
     if not song_path:
         logger.info(f"Música '{song_name}' de '{artist}' NÃO encontrada no Letras.mus.br.")
         if not _request_state.transient_failure:

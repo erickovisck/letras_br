@@ -9,3 +9,4 @@ winrt-Windows.Media.Control>=3.2.0
 winrt-Windows.Foundation>=3.2.0
 pykakasi>=2.3.0
 langdetect>=1.0.9
+winrt-Windows.Storage.Streams>=3.2.0

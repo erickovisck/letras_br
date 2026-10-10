@@ -184,14 +184,19 @@ Os logs ficam em `logs/letrasbr.log` (rotativo).
 O overlay flutuante pode ser completamente customizado para combinar com seu papel de parede ou tema de trabalho:
 
 - **Arrastar e Posicionar:** Clique e arraste na barra superior escura para posicionar a janela onde preferir.
-- **Redimensionar:** Clique e arraste o ícone `⇲` no canto inferior direito.
+- **Redimensionar:** Clique e arraste o ícone `⇲` no canto inferior direito. Quanto mais alto o overlay, mais versos anteriores/seguintes aparecem em volta do atual.
 - **Avançar / Retroceder Música:** Use o slider de progresso localizado no topo ao lado dos botões de reprodução.
-- **Menu de Configurações (`⚙️`):**
-  - Ajuste a cor de fundo e a transparência em tempo real.
-  - Altere a cor do verso original e da tradução.
-  - Escolha qualquer fonte do sistema e ajuste o tamanho com precisão nos botões `[−]` e `[+]`.
-  - Ative Negrito ou Itálico.
-- **Bandeja do Sistema:** Clique com o botão direito no ícone do LetrasBR ao lado do relógio do Windows para atalhos rápidos ou para fechar.
+- **Letra completa (`≡`):** Abre um painel com a letra inteira; clique num verso para pular até ele.
+- **Sincronia por música:** Botões `−`/`+` (ou teclas `[` `]`, `0` para zerar) adiantam/atrasam a letra em 250 ms. O ajuste fica salvo para aquela música.
+- **Música errada?** Clique no status da música para abrir a página no Letras, colar o link correto da tradução ou recarregar.
+- **Controles que somem sozinhos:** As barras desaparecem quando o mouse sai do overlay.
+- **Cadeado (click-through):** Com o overlay travado, os cliques passam para a janela de trás. Destrave com `Ctrl+Alt+L` ou pelo menu da bandeja.
+- **Menu de Configurações (`⚙️`)**, em abas, com pré-visualização ao vivo (Cancelar desfaz):
+  - Temas prontos, incluindo o **Dinâmico**, que tira as cores da capa do álbum.
+  - Cor de fundo, transparência, cor do verso original e da tradução.
+  - Fonte, tamanho, Negrito/Itálico e efeito no texto (sombra ou contorno) para fundos transparentes.
+  - Transição entre versos (3D, rolagem, deslizar, esmaecer ou nenhuma) e sua duração.
+- **Bandeja do Sistema:** Clique com o botão direito no ícone do LetrasBR ao lado do relógio do Windows para atalhos rápidos, travar/destravar ou fechar.
 
 ---
 

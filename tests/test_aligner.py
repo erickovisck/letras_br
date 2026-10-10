@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from letrasbr_api.aligner import AlignedLine, align_lyrics, find_active_aligned_line
+from letrasbr_api.aligner import AlignedLine, align_lyrics, find_active_aligned_line, find_active_index
 from letrasbr_api.providers.base import TimedLine
 from letrasbr_api.text_utils import is_instrumental
 
@@ -134,6 +134,11 @@ LINES = [
 def test_find_active_line(t, expected):
     active = find_active_aligned_line(LINES, t)
     assert (active.original if active else None) == expected
+
+
+def test_find_active_index():
+    assert [find_active_index(LINES, t) for t in (0, 1000, 7000, 12000, 50000)] == [-1, 0, 1, 1, 2]
+    assert find_active_index([], 100) == -1
 
 
 def test_find_active_line_on_shared_boundary():

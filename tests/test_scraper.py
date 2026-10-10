@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 
 from letrasbr_api import scraper
 from letrasbr_api.scraper import (
-    clean_song_title, fetch_translation, find_best_song_link, get_translation_suffix, split_multilingual,
-    version_penalty,
+    clean_song_title, fetch_translation, find_best_song_link, get_translation_suffix, letras_path_from_url,
+    split_multilingual, version_penalty,
 )
 
 TRANSLATION_PAGE = """
@@ -38,6 +38,26 @@ def test_translation_suffix():
     assert get_translation_suffix("fr") == "traduction-francaise.html"
     assert get_translation_suffix("PT-BR") == "traducao.html"
     assert get_translation_suffix("xx") == "traducao.html"
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("https://www.letras.mus.br/ado/odo/traducao.html", "/ado/odo/"),
+    ("letras.mus.br/frank-sinatra/36439/", "/frank-sinatra/36439/"),
+    ("/ado/odo", "/ado/odo/"),
+    ("https://www.letras.mus.br/ado/", None),   # página do artista, não da música
+    ("ado - odo", None),
+    ("https://google.com/a/b/", None),
+])
+def test_letras_path_from_url(text, expected):
+    assert letras_path_from_url(text) == expected
+
+
+def test_manual_song_path_skips_search(monkeypatch):
+    calls = fake_site(monkeypatch, {"traducao.html": (200, TRANSLATION_PAGE)})
+    result = fetch_translation("Ado", "Odo", "pt", song_path="/ado/odo/")
+    assert calls["song_url"] == 0
+    assert calls["pages"] == ["https://www.letras.mus.br/ado/odo/traducao.html"]
+    assert result.lang_used == "pt"
 
 
 def test_version_penalty():

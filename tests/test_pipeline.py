@@ -20,8 +20,9 @@ def fake_services(monkeypatch):
     }
     monkeypatch.setattr(pipeline, "fetch_timed_lyrics", lambda track, source: (list(state["timed"]), state["timing_source"]))
 
-    def fetch_translation(artist, title, lang, allow_pt_fallback=True):
+    def fetch_translation(artist, title, lang, allow_pt_fallback=True, song_path=None):
         state["translation_calls"].append((title, lang, allow_pt_fallback))
+        state["song_path"] = song_path
         return state["translation"]
 
     def translate_lines(lines, lang):
@@ -92,6 +93,13 @@ def test_estimated_timings_without_synced_lyrics(fake_services):
     first, second = result.aligned
     assert first.start_time == 5000 and second.end_time == 95000
     assert second.end_time - second.start_time > first.end_time - first.start_time
+
+
+def test_manual_letras_page_is_used(fake_services):
+    from letrasbr_api import track_prefs
+    track_prefs.set_letras_path("Ado", "Odo", "/ado/odo/")
+    pipeline.fetch_and_align("Odo", "Ado", lang="pt")
+    assert fake_services["song_path"] == "/ado/odo/"
 
 
 def test_stale_fetch_returns_none(fake_services):

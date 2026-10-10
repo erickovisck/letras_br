@@ -36,3 +36,4 @@ YouTubeMusic-Beautifier-main/
 local.properties
 *.apk
 *.aab
+config/track_prefs.json

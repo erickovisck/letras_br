@@ -28,6 +28,10 @@ DEFAULT_CONFIG = {
     "fontBold": True,
     "fontItalic": False,
     "displayMode": "both",  # "both", "trans", "orig"
+    "transition": "3d",     # "3d", "scroll", "slide", "fade", "none" (ver ui/lyric_view.py)
+    "transitionMs": 300,
+    "textEffect": "none",   # "none", "shadow", "outline"
+    "autoHideControls": True,  # Barras somem quando o mouse sai do overlay
     "lang": "pt",           # "pt", "en", "es", "fr"
     "autoTranslate": True,  # Completa com tradução automática (Google) o que o Letras não tiver
     "locked": False,
@@ -37,6 +41,7 @@ DEFAULT_CONFIG = {
 # Chaves de configuração que um tema define
 THEME_KEYS = ("bgColor", "opacity", "origColor", "transColor", "fontFamily", "fontSize", "fontBold", "fontItalic")
 DEFAULT_THEME_NAME = "Escuro (Padrão)"
+DYNAMIC_THEME_NAME = "Dinâmico (capa do álbum)"  # Cores extraídas da capa da música tocando
 
 
 def get_available_themes() -> dict:

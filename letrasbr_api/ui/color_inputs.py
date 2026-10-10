@@ -61,21 +61,8 @@ class HexColorLineEdit(QLineEdit):
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setMaxLength(7)
-        self.setStyleSheet("""
-            QLineEdit {
-                background-color: #212130;
-                color: #f8fafc;
-                border: 1px solid #3f3f5a;
-                border-radius: 4px;
-                padding: 3px 6px;
-                font-family: 'Consolas', monospace;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QLineEdit:focus {
-                border-color: #38bdf8;
-            }
-        """)
+        # Cores vêm do estilo da tela de configurações (seguem o tema); aqui só a tipografia
+        self.setObjectName("hexColor")
 
     def keyPressEvent(self, event):
         if (event.modifiers() & Qt.ControlModifier and event.key() == Qt.Key_V) or \

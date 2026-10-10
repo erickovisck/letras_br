@@ -63,6 +63,12 @@ class LyricsClient:
     def _key(artist: str, title: str, lang: str, auto_translate: bool) -> str:
         return f"{artist.strip().lower()}|||{title.strip().lower()}|||{lang.strip().lower()}|||{int(auto_translate)}"
 
+    def invalidate(self, artist: str, title: str):
+        """Descarta do cache todas as versões (idiomas) desta música."""
+        prefix = f"{artist.strip().lower()}|||{title.strip().lower()}|||"
+        for key in [k for k in self._cache if k.startswith(prefix)]:
+            del self._cache[key]
+
     def fetch_lyrics(
         self,
         title: str,

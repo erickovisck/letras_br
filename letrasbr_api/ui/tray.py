@@ -32,7 +32,7 @@ def load_app_icon() -> QIcon:
 def create_tray_icon(window) -> QSystemTrayIcon:
     """
     Cria o ícone da bandeja ligado à janela do overlay.
-    A janela precisa expor: toggle_visibility, open_settings, send_media_cmd e exit_application.
+    A janela precisa expor: toggle_visibility, toggle_lock, open_settings, send_media_cmd e exit_application.
     """
     app_icon = load_app_icon()
     window.setWindowIcon(app_icon)
@@ -44,8 +44,11 @@ def create_tray_icon(window) -> QSystemTrayIcon:
         action = QAction(text, window)
         action.triggered.connect(callback)
         menu.addAction(action)
+        return action
 
     add_action("Mostrar / Ocultar Overlay", window.toggle_visibility)
+    # Única forma (além do atalho) de destravar quando o overlay deixa os cliques passarem
+    tray_icon.lock_action = add_action("Travar / Destravar overlay (Ctrl+Alt+L)", window.toggle_lock)
     add_action("Configurações", window.open_settings)
     menu.addSeparator()
     add_action("Play / Pause", lambda: window.send_media_cmd("play_pause"))
